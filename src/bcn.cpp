@@ -406,6 +406,11 @@ decompress_bcn_compute(struct device *dev,
 			&desc_alloc_info, &descriptorSet);
 	}
 
+	if (result != VK_SUCCESS) {
+	    Logger::log("error", "Failed to allocate descriptor set: %d", result);
+		return result;
+	}
+
 	VkWriteDescriptorSet desc_writes[2];
 	
 	VkDescriptorBufferInfo src_info = {
@@ -432,6 +437,13 @@ decompress_bcn_compute(struct device *dev,
 	desc_writes[1].dstArrayElement = 0;
 	desc_writes[1].descriptorCount = 1;
 
+	// Pull this out of the if block to avoid it being GC-ed (depending on compiler)
+	// once out of scope, since it must live until the table.UpdateDescriptorSets
+	VkDescriptorImageInfo image_info = {
+		.sampler = VK_NULL_HANDLE,
+		.imageLayout = VK_IMAGE_LAYOUT_GENERAL
+	};
+	
 	if (!use_image_view) {
 		VkDescriptorBufferInfo dst_info = {
 			.buffer = stagingBuffer->handle,
@@ -470,14 +482,14 @@ decompress_bcn_compute(struct device *dev,
 		};
 
 		VkImageView dstImageView;
-		table.CreateImageView(dev->handle, &viewCreateInfo, nullptr, &dstImageView);
+		result = table.CreateImageView(dev->handle, &viewCreateInfo, nullptr, &dstImageView);
+		if (result != VK_SUCCESS) {
+			Logger::log("error", "table.CreateImageView failed: result=%d", result);
+			return result;
+		}
 
-		VkDescriptorImageInfo image_info = {
-			.sampler = VK_NULL_HANDLE,
-			.imageView = dstImageView,
-			.imageLayout = VK_IMAGE_LAYOUT_GENERAL
-		};
-
+		image_info.imageView = dstImageView;
+		
 		desc_writes[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;                      
 		desc_writes[1].pImageInfo = &image_info;                                                    
 		desc_writes[1].pBufferInfo = nullptr;
