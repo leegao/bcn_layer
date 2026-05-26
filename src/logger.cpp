@@ -11,6 +11,8 @@ namespace Logger {
 	
 	uint64_t bcn_layer_log_mask;
 
+	void init();
+
 	static unsigned long long get_debug_flag(const char *option) {
     	int index = 0;
 
@@ -34,6 +36,7 @@ namespace Logger {
 	}
 	
 	void log (const std::string& log_level, const char *format, ...) {
+		Logger::init();
 		if (!get_bcn_layer_log_level(log_level.c_str()))
 			return;
 			
@@ -49,6 +52,11 @@ namespace Logger {
 	}
 
 	void init() {
+	    static bool initialized = false;
+	    if (initialized)
+	        return;
+	    initialized = true;
+		
 		char *bcn_layer_log_env = std::getenv("BCN_LAYER_LOG_LEVEL");
 		if (!bcn_layer_log_env) {
 			bcn_layer_log_mask = 0;
