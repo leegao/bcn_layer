@@ -14,6 +14,7 @@ namespace Logger {
 	void init();
 
 	static unsigned long long get_debug_flag(const char *option) {
+	    Logger::init();
     	int index = 0;
 
         while (!bcn_layer_log_options[index].name.empty()) {
