@@ -3,6 +3,7 @@
 #include "vulkan/vk_layer.h"
 
 #include <unistd.h>
+#include <cmath>
 
 std::unordered_map<void *, VkLayerInstanceDispatchTable> instanceDispatch;
 std::unordered_map<void *, VkInstance> instanceMap;

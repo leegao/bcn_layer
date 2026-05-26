@@ -1,4 +1,6 @@
 #include "logger.hpp"
+#include <cstdint>
+#include <cstring>
 
 namespace Logger {
 	static struct bcn_layer_log bcn_layer_log_options[] = {
