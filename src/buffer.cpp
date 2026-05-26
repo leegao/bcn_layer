@@ -144,6 +144,40 @@ BCnLayer_BindBufferMemory(VkDevice device,
 	return VK_SUCCESS;
 }
 
+VK_LAYER_EXPORT VkResult VKAPI_CALL
+BCnLayer_BindBufferMemory2(VkDevice device,
+						  uint32_t bindInfoCount,
+						  const VkBindBufferMemoryInfo* pBindInfos)
+{
+	VkResult result;
+	VkLayerDispatchTable table;
+
+	scoped_lock l(global_lock);
+
+	struct device *dev = get_device(device);
+	if (!dev)
+		return VK_ERROR_INITIALIZATION_FAILED;
+
+	table = dev->table;
+
+	// Don't emulate with BindBufferMemory in case pBindInfos has a pNext
+	result = table.BindBufferMemory2(device, bindInfoCount, pBindInfos);
+	if (result != VK_SUCCESS) {
+		Logger::log("error", "Failed to bind buffer memory, res %d", result);
+		return result;
+	}
+
+	for (uint32_t i = 0; i < bindInfoCount; i++) {
+		struct buffer *buf = find_buffer(pBindInfos[i].buffer);
+		if (buf) {
+			buf->memory = pBindInfos[i].memory;
+			buf->offset = pBindInfos[i].memoryOffset;
+		}
+	}
+
+	return VK_SUCCESS;
+}
+
 VK_LAYER_EXPORT void VKAPI_CALL
 BCnLayer_DestroyBuffer(VkDevice device,
 					   VkBuffer buffer,

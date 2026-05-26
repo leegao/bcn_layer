@@ -138,3 +138,41 @@ BCnLayer_CmdCopyBufferToImage(VkCommandBuffer commandBuffer,
 		}
 	}
 }
+
+VK_LAYER_EXPORT void VKAPI_CALL
+BCnLayer_CmdCopyBufferToImage2(VkCommandBuffer commandBuffer, 
+                               const VkCopyBufferToImageInfo2* pCopyBufferToImageInfo)
+{
+	VkResult result;
+
+	struct command_buffer *cb = get_command_buffer(commandBuffer);
+	struct device *dev = cb->device;
+	auto dstImage = pCopyBufferToImageInfo->dstImage;
+	struct image *img = find_image(dstImage);
+	auto srcBuffer = pCopyBufferToImageInfo->srcBuffer;
+	struct buffer *buf = find_buffer(srcBuffer);
+	VkFormat format = img->format;
+	auto dstImageLayout = pCopyBufferToImageInfo->dstImageLayout;
+	auto regionCount = pCopyBufferToImageInfo->regionCount;
+	auto pRegions = pCopyBufferToImageInfo->pRegions;
+
+	if (!img || !buf || !is_supported_bcn_format(dev, format)) {
+		dev->table.CmdCopyBufferToImage2(commandBuffer, pCopyBufferToImageInfo);
+		return;
+	}
+
+	// Emulate this using BCnLayer_CmdCopyBufferToImage since there are no valid pNexts
+	std::vector<VkBufferImageCopy> regions(regionCount);
+	for (uint32_t i = 0; i < regionCount; i++) {
+		regions[i] = {
+		    .bufferOffset = pRegions[i].bufferOffset,
+		    .bufferRowLength = pRegions[i].bufferRowLength,
+		    .bufferImageHeight = pRegions[i].bufferImageHeight,
+		    .imageSubresource = pRegions[i].imageSubresource,
+		    .imageOffset = pRegions[i].imageOffset,
+		    .imageExtent = pRegions[i].imageExtent,
+		};
+	}
+
+	BCnLayer_CmdCopyBufferToImage(commandBuffer, srcBuffer, dstImage, dstImageLayout, regionCount, regions.data());
+}

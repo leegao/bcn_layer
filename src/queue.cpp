@@ -51,3 +51,25 @@ BCnLayer_QueueSubmit(VkQueue queue,
 
 	return q->device->table.QueueSubmit(queue, submitInfoCount, pSubmitInfos, fence);
 }
+
+VK_LAYER_EXPORT VkResult VKAPI_CALL
+BCnLayer_QueueSubmit2(VkQueue queue,
+					 uint32_t submitInfoCount,
+					 const VkSubmitInfo2 *pSubmitInfos,
+					 VkFence fence)
+{
+	scoped_lock l(global_lock);
+
+	struct queue *q = get_queue(queue);
+	struct fence *f = get_fence(fence);
+
+	for (uint32_t i = 0; i < submitInfoCount; i++) {
+		VkSubmitInfo2 submit_info = pSubmitInfos[i];
+		for (uint32_t j = 0; j < submit_info.commandBufferInfoCount; j++) {
+			struct command_buffer *cb = get_command_buffer(submit_info.pCommandBufferInfos[j].commandBuffer);
+			cb->fence = f;
+		}
+	}
+
+	return q->device->table.QueueSubmit2(queue, submitInfoCount, pSubmitInfos, fence);
+}

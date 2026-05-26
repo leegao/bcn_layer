@@ -34,6 +34,11 @@ BCnLayer_BindBufferMemory(VkDevice device,
                           VkDeviceMemory memory,
                           VkDeviceSize memoryOffset);
 
+VkResult VKAPI_CALL
+BCnLayer_BindBufferMemory2(VkDevice device,
+                           uint32_t bindInfoCount,
+                           const VkBindBufferMemoryInfo* pBindInfos);
+
 void VKAPI_CALL
 BCnLayer_DestroyBuffer(VkDevice device,
 					   VkBuffer buffer,
@@ -58,6 +63,11 @@ BCnLayer_CmdCopyBufferToImage(VkCommandBuffer commandBuffer,
                               uint32_t regionCount,
                               const VkBufferImageCopy *pRegions);
 
+
+void VKAPI_CALL
+BCnLayer_CmdCopyBufferToImage2(VkCommandBuffer commandBuffer, 
+                               const VkCopyBufferToImageInfo2* pCopyBufferToImageInfo);
+
 void VKAPI_CALL
 BCnLayer_GetDeviceQueue(VkDevice device,
                         uint32_t queueFamilyIndex,
@@ -68,6 +78,12 @@ VkResult VKAPI_CALL
 BCnLayer_QueueSubmit(VkQueue queue,
                      uint32_t submitInfoCount,
                      const VkSubmitInfo *pSubmitInfos,
+                     VkFence fence);
+
+VkResult VKAPI_CALL
+BCnLayer_QueueSubmit2(VkQueue queue,
+                     uint32_t submitInfoCount,
+                     const VkSubmitInfo2 *pSubmitInfos,
                      VkFence fence);
 
 VkResult VKAPI_CALL

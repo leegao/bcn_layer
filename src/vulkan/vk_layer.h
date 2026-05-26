@@ -56,6 +56,7 @@ typedef struct VkLayerDispatchTable_ {
     PFN_vkGetBufferMemoryRequirements GetBufferMemoryRequirements;
     PFN_vkBindImageMemory BindImageMemory;
     PFN_vkBindBufferMemory BindBufferMemory;
+    PFN_vkBindBufferMemory2 BindBufferMemory2;
     PFN_vkQueueBindSparse QueueBindSparse;
     PFN_vkCreateFence CreateFence;
     PFN_vkDestroyFence DestroyFence;
@@ -138,6 +139,7 @@ typedef struct VkLayerDispatchTable_ {
     PFN_vkCmdCopyImage CmdCopyImage;
     PFN_vkCmdBlitImage CmdBlitImage;
     PFN_vkCmdCopyBufferToImage CmdCopyBufferToImage;
+    PFN_vkCmdCopyBufferToImage2 CmdCopyBufferToImage2;
     PFN_vkCmdCopyImageToBuffer CmdCopyImageToBuffer;
     PFN_vkCmdUpdateBuffer CmdUpdateBuffer;
     PFN_vkCmdFillBuffer CmdFillBuffer;

@@ -425,6 +425,7 @@ BCnLayer_CreateDevice(VkPhysicalDevice physicalDevice,
     table.DestroyImage = (PFN_vkDestroyImage)gdpa(*pDevice, "vkDestroyImage");
     table.CreateBuffer = (PFN_vkCreateBuffer)gdpa(*pDevice, "vkCreateBuffer");
     table.BindBufferMemory = (PFN_vkBindBufferMemory)gdpa(*pDevice, "vkBindBufferMemory");
+    table.BindBufferMemory2 = (PFN_vkBindBufferMemory2)gdpa(*pDevice, "vkBindBufferMemory2");
     table.DestroyBuffer = (PFN_vkDestroyBuffer)gdpa(*pDevice, "vkDestroyBuffer");
     table.AllocateCommandBuffers = (PFN_vkAllocateCommandBuffers)gdpa(*pDevice, "vkAllocateCommandBuffers");
     table.CreateCommandPool = (PFN_vkCreateCommandPool)gdpa(*pDevice, "vkCreateCommandPool");
@@ -451,6 +452,7 @@ BCnLayer_CreateDevice(VkPhysicalDevice physicalDevice,
     table.CmdBindDescriptorSets = (PFN_vkCmdBindDescriptorSets)gdpa(*pDevice, "vkCmdBindDescriptorSets");
     table.CmdDispatch = (PFN_vkCmdDispatch)gdpa(*pDevice, "vkCmdDispatch");
     table.CmdCopyBufferToImage = (PFN_vkCmdCopyBufferToImage)gdpa(*pDevice, "vkCmdCopyBufferToImage");
+    table.CmdCopyBufferToImage2 = (PFN_vkCmdCopyBufferToImage2)gdpa(*pDevice, "vkCmdCopyBufferToImage2");
     table.CmdPipelineBarrier = (PFN_vkCmdPipelineBarrier)gdpa(*pDevice, "vkCmdPipelineBarrier");
     table.DestroyDescriptorPool = (PFN_vkDestroyDescriptorPool)gdpa(*pDevice, "vkDestroyDescriptorPool");
     table.DestroyDescriptorSetLayout = (PFN_vkDestroyDescriptorSetLayout)gdpa(*pDevice, "vkDestroyDescriptorSetLayout");
@@ -541,12 +543,15 @@ BCnLayer_GetDeviceProcAddr(VkDevice device,
 	GETPROCADDR(DestroyImage);
 	GETPROCADDR(CreateBuffer);
 	GETPROCADDR(BindBufferMemory);
+	GETPROCADDR(BindBufferMemory2);
 	GETPROCADDR(DestroyBuffer);
 	GETPROCADDR(AllocateCommandBuffers);
 	GETPROCADDR(FreeCommandBuffers);
 	GETPROCADDR(CmdCopyBufferToImage);
+	GETPROCADDR(CmdCopyBufferToImage2);
 	GETPROCADDR(GetDeviceQueue);
 	GETPROCADDR(QueueSubmit);
+	GETPROCADDR(QueueSubmit2);
 	GETPROCADDR(CreateFence);
 	GETPROCADDR(DestroyFence);
 	GETPROCADDR(WaitForFences);
