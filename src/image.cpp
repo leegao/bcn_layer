@@ -29,9 +29,31 @@ BCnLayer_CreateImage(VkDevice device,
 	table = dev->table;
 
 	if (is_supported_bcn_format(dev, pCreateInfo->format)) {
-	    create_info.format = get_format_for_bcn(pCreateInfo->format);
+	    auto target_format = get_format_for_bcn(pCreateInfo->format);
+	    create_info.format = target_format;
 	    create_info.usage |= VK_IMAGE_USAGE_STORAGE_BIT;
 	    create_info.flags &= ~VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT;
+
+        // err:   vkCreateImage(): 
+        //     pCreateInfo->pNext<VkImageFormatListCreateInfo>.pViewFormats[0] (VK_FORMAT_BC3_UNORM_BLOCK) and 
+        //     VkImageCreateInfo::format (VK_FORMAT_R8G8B8A8_UNORM) are not class compatible.
+        const VkBaseInStructure* pnext = reinterpret_cast<const VkBaseInStructure*>(create_info.pNext);
+        while (pnext != nullptr) {
+            switch (static_cast<int32_t>(pnext->sType)) {
+                case VK_STRUCTURE_TYPE_IMAGE_FORMAT_LIST_CREATE_INFO: {
+                    auto* ext = reinterpret_cast<VkImageFormatListCreateInfo*>(const_cast<VkBaseInStructure*>(pnext));
+                    if (ext->pViewFormats != nullptr) {
+                        ext->viewFormatCount = 1;
+                        auto* formats = const_cast<VkFormat*>(ext->pViewFormats);
+                        formats[0] = target_format;
+                    }
+                    break;
+                }
+                default:
+                    break;
+            }
+            pnext = pnext->pNext;
+        }					
 	}
 
 	result = table.CreateImage(device, &create_info, pAllocator, pImage);
