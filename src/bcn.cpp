@@ -344,8 +344,10 @@ create_bcn_compute_pipelines(struct device *dev)
 
 	result = create_new_pool(dev);
 
-	if (result != VK_SUCCESS)
+	if (result != VK_SUCCESS) {
+	    Logger::log("error", "Failed to create descriptor pool, res %d", result);
 		return result;
+	}
 	
 	return VK_SUCCESS;
 }
@@ -397,7 +399,10 @@ decompress_bcn_compute(struct device *dev,
 	result = table.AllocateDescriptorSets(device,
 		&desc_alloc_info, &descriptorSet);
 
-	if (result == VK_ERROR_OUT_OF_POOL_MEMORY) {
+	// TODO: redesign this to reuse descriptors, since we're basically just using up
+	// unlimited number of them right now (on many drivers, you'll also get
+	// fragmented pools after 3-4 dispatches)
+	if (result == VK_ERROR_OUT_OF_POOL_MEMORY || result == VK_ERROR_FRAGMENTED_POOL) {
 		create_new_pool(dev);
 
 		desc_alloc_info.descriptorPool = dev->pools.back();
@@ -418,7 +423,14 @@ decompress_bcn_compute(struct device *dev,
 		.offset = static_cast<VkDeviceSize>(offset),
 		.range = VK_WHOLE_SIZE
 	};
-	
+
+	// Scope this at the UpdateDescriptorSets level to avoid use-after-free
+	VkDescriptorBufferInfo dst_info = {
+		.buffer = use_image_view ? VK_NULL_HANDLE : stagingBuffer->handle,
+		.offset = 0,
+		.range = VK_WHOLE_SIZE
+	};
+
 	desc_writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
 	desc_writes[0].pNext = nullptr;
 	desc_writes[0].dstSet = descriptorSet;
@@ -444,13 +456,7 @@ decompress_bcn_compute(struct device *dev,
 		.imageLayout = VK_IMAGE_LAYOUT_GENERAL
 	};
 	
-	if (!use_image_view) {
-		VkDescriptorBufferInfo dst_info = {
-			.buffer = stagingBuffer->handle,
-			.offset = 0,
-			.range = VK_WHOLE_SIZE
-		};                                           
-
+	if (!use_image_view) {                                
 		desc_writes[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
 		desc_writes[1].pImageInfo = nullptr;                                                    
 		desc_writes[1].pBufferInfo = &dst_info;                                                 
