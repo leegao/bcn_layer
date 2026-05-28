@@ -4,6 +4,7 @@
 
 #include <unistd.h>
 #include <cmath>
+#include <utility>
 
 std::unordered_map<void *, VkLayerInstanceDispatchTable> instanceDispatch;
 std::unordered_map<void *, VkInstance> instanceMap;
@@ -29,6 +30,40 @@ get_device(VkDevice device)
 		return nullptr;
 	
 	return it->second.get();
+}
+
+SyncPool::~SyncPool() {
+    auto dev = get_device(device);
+    if (!dev) return;
+    for (auto f : freeFences)
+        dev->table.DestroyFence(device, f, nullptr);
+    for (auto s : freeSemaphores)
+        dev->table.DestroySemaphore(device, s, nullptr);
+}
+
+std::pair<VkSemaphore, VkFence> SyncPool::Acquire() {
+    auto dev = get_device(device);
+    if (!dev) return {VK_NULL_HANDLE, VK_NULL_HANDLE};
+
+    VkFence fence;
+    if (!freeFences.empty()) {
+        fence = freeFences.back();
+        freeFences.pop_back();
+        dev->table.ResetFences(device, 1, &fence);
+    } else {
+        VkFenceCreateInfo info = {VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
+        dev->table.CreateFence(device, &info, nullptr, &fence);
+    }
+
+    VkSemaphore sem;
+    if (!freeSemaphores.empty()) {
+        sem = freeSemaphores.back();
+        freeSemaphores.pop_back();
+    } else {
+        VkSemaphoreCreateInfo info = {VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
+        dev->table.CreateSemaphore(device, &info, nullptr, &sem);
+    }
+    return {sem, fence};
 }
 
 VK_LAYER_EXPORT VkResult VKAPI_CALL
@@ -361,6 +396,34 @@ BCnLayer_GetPhysicalDeviceFormatProperties(VkPhysicalDevice physicalDevice,
    }
 }
 
+void FinalizerThread(struct device* dev) {
+    while (!dev->stop_thread) {
+        {
+            std::vector<std::unique_ptr<StagingResources>> queue;
+            {
+                std::unique_lock<std::mutex> lock(global_lock);
+                dev->hasCleanupWork.wait(lock, [dev] {
+                    return dev->stop_thread || !dev->stagingResourcesQueue.empty();
+                });
+
+                if (dev->stop_thread) {
+                    return;
+                }
+
+                if (!dev->stagingResourcesQueue.empty()) {
+                    std::swap(queue, dev->stagingResourcesQueue);
+                }
+            }
+
+            for (auto& stagingResources : queue) {
+                if (dev->stop_thread) return;
+                stagingResources->WaitForCompletion();
+                stagingResources->Cleanup();
+            }
+        }
+    }
+}
+
 VK_LAYER_EXPORT VkResult VKAPI_CALL
 BCnLayer_CreateDevice(VkPhysicalDevice physicalDevice,
 					  const VkDeviceCreateInfo *pCreateInfo,
@@ -431,8 +494,11 @@ BCnLayer_CreateDevice(VkPhysicalDevice physicalDevice,
     table.CreateCommandPool = (PFN_vkCreateCommandPool)gdpa(*pDevice, "vkCreateCommandPool");
     table.GetDeviceQueue = (PFN_vkGetDeviceQueue)gdpa(*pDevice, "vkGetDeviceQueue");
     table.CreateFence = (PFN_vkCreateFence)gdpa(*pDevice, "vkCreateFence");
+    table.ResetFences = (PFN_vkResetFences)gdpa(*pDevice, "vkResetFences");
     table.DestroyFence = (PFN_vkDestroyFence)gdpa(*pDevice, "vkDestroyFence");
     table.WaitForFences = (PFN_vkWaitForFences)gdpa(*pDevice, "vkWaitForFences");
+    table.CreateSemaphore = (PFN_vkCreateSemaphore)gdpa(*pDevice, "vkCreateSemaphore");
+    table.DestroySemaphore = (PFN_vkDestroySemaphore)gdpa(*pDevice, "vkDestroySemaphore");
     table.DeviceWaitIdle = (PFN_vkDeviceWaitIdle)gdpa(*pDevice, "vkDeviceWaitIdle");
     table.BeginCommandBuffer = (PFN_vkBeginCommandBuffer)gdpa(*pDevice, "vkBeginCommandBuffer");
     table.ResetCommandBuffer = (PFN_vkResetCommandBuffer)gdpa(*pDevice, "vkResetCommandBuffer");
@@ -459,6 +525,9 @@ BCnLayer_CreateDevice(VkPhysicalDevice physicalDevice,
     table.DestroyPipelineLayout = (PFN_vkDestroyPipelineLayout)gdpa(*pDevice, "vkDestroyPipelineLayout");
     table.DestroyPipeline = (PFN_vkDestroyPipeline)gdpa(*pDevice, "vkDestroyPipeline");
     table.DestroyShaderModule = (PFN_vkDestroyShaderModule)gdpa(*pDevice, "vkDestroyShaderModule");
+    table.MapMemory = (PFN_vkMapMemory)gdpa(*pDevice, "vkMapMemory");
+    table.UnmapMemory = (PFN_vkUnmapMemory)gdpa(*pDevice, "vkUnmapMemory");
+    table.InvalidateMappedMemoryRanges = (PFN_vkInvalidateMappedMemoryRanges)gdpa(*pDevice, "vkInvalidateMappedMemoryRanges");
 
     uint32_t queueCount;
     VkQueue queue;
@@ -496,7 +565,11 @@ BCnLayer_CreateDevice(VkPhysicalDevice physicalDevice,
     	Logger::log("error", "Failed to create BCn compute pipeline, res %d", result);
         return result;
     }
-   
+
+    device->syncPool = std::make_unique<SyncPool>(device->handle);
+    device->stop_thread = false;
+    device->finalizer_thread = std::thread(FinalizerThread, device.get());
+
 	{
 		scoped_lock l(global_lock);
     	deviceMap[GetKey(*pDevice)] = device;
@@ -509,14 +582,22 @@ VK_LAYER_EXPORT void VKAPI_CALL
 BCnLayer_DestroyDevice(VkDevice device, 
 					   const VkAllocationCallbacks *pAllocator)
 {
-	scoped_lock l(global_lock);
+	struct device *dev;
+	{
+		scoped_lock l(global_lock);
+		dev = get_device(device);
+		if (!dev)
+			return;
+	}
 
-	struct device *dev = get_device(device);
-	if (!dev)
-		return;
-		
-	dev->table.DeviceWaitIdle(device);
+    dev->stop_thread = true;
+    dev->hasCleanupWork.notify_all();
+    dev->table.DeviceWaitIdle(device);
+    if (dev->finalizer_thread.joinable()) {
+        dev->finalizer_thread.join();
+    }
 
+    scoped_lock l(global_lock);
 	for (const auto& pool : dev->pools)
 		dev->table.DestroyDescriptorPool(device, pool, nullptr);
 			
@@ -527,6 +608,11 @@ BCnLayer_DestroyDevice(VkDevice device,
 	dev->table.DestroyPipeline(device, dev->bc7Pipeline, nullptr);
 	dev->table.DestroyPipeline(device, dev->bc6Pipeline, nullptr);
 	dev->table.DestroyPipeline(device, dev->rgtcPipeline, nullptr);
+	for (auto& stagingResources : dev->stagingResourcesQueue) {
+		stagingResources->Cleanup();
+	}
+	dev->stagingResourcesQueue.clear();
+	dev->syncPool.reset();
 	if (device != VK_NULL_HANDLE)
 		dev->table.DestroyDevice(device, pAllocator);
 				

@@ -4,14 +4,18 @@
 #include "vulkan/vk_layer.h"
 #include "vk_func.hpp"
 #include "logger.hpp"
+#include "staging_resources.hpp"
 
 #include <vulkan/vulkan.h>
+#include <atomic>
 #include <unistd.h>
 #include <unordered_map>
 #include <mutex>
 #include <vector>
 #include <memory>
 #include <cstring>
+#include <thread>
+#include <condition_variable>
 
 #undef VK_LAYER_EXPORT
 #if defined(WIN32)
@@ -33,6 +37,26 @@ void* GetKey(T item) {
 extern std::mutex global_lock;
 typedef std::lock_guard<std::mutex> scoped_lock;
 
+// Object pool for pairs of semaphores and fences for staging resources
+// cleanup signaling
+class SyncPool {
+public:
+    explicit SyncPool(VkDevice device) : device(device) {}
+    ~SyncPool();
+
+    std::pair<VkSemaphore, VkFence> Acquire();
+
+    void Release(VkSemaphore sem, VkFence fence) {
+        freeSemaphores.push_back(sem);
+        freeFences.push_back(fence);
+    }
+
+private:
+    VkDevice device;
+    std::vector<VkFence> freeFences;
+    std::vector<VkSemaphore> freeSemaphores;
+};
+
 struct device {
 	VkDevice handle;
 	VkPhysicalDevice physical;
@@ -52,6 +76,11 @@ struct device {
 	VkDescriptorSetLayout setLayout;
 	std::vector<VkDescriptorPool> pools;
 	const VkAllocationCallbacks *alloc;
+	std::unique_ptr<SyncPool> syncPool;
+	std::vector<std::unique_ptr<StagingResources>> stagingResourcesQueue;
+	std::condition_variable hasCleanupWork;
+	std::thread finalizer_thread;
+    std::atomic_bool stop_thread {false};
 };
 
 struct device *get_device(VkDevice);

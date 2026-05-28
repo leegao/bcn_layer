@@ -1,4 +1,5 @@
 #include "command_buffer.hpp"
+#include "bcn_layer.hpp"
 #include "image.hpp"
 #include "bcn.hpp"
 
@@ -40,6 +41,7 @@ BCnLayer_AllocateCommandBuffers(VkDevice device,
 		cmd->handle = pCommandBuffers[i];
 		cmd->device = dev;
 		cmd->pool = pAllocateInfo->commandPool;
+		cmd->currentStagingResources = std::make_unique<StagingResources>(device);
 		{
 			scoped_lock l(global_lock);
 			commandBuffersMap[pCommandBuffers[i]] = cmd;
@@ -133,8 +135,7 @@ BCnLayer_CmdCopyBufferToImage(VkCommandBuffer commandBuffer,
 
 			table.CmdCopyBufferToImage(commandBuffer,
 				staging_buf->handle, dstImage, dstImageLayout, 1, &copy_region);
-
-			cb->fence->staging_buffers.push_back(std::move(staging_buf));
+			cb->currentStagingResources->AddStagingBuffer(std::move(staging_buf));
 		}
 	}
 }
