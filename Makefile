@@ -13,7 +13,8 @@ SOURCES := src/bcn_layer.cpp \
 	       src/command_buffer.cpp \
 	       src/queue.cpp \
 	       src/fence.cpp \
-	       src/logger.cpp
+	       src/logger.cpp \
+	       src/staging_resources.cpp
 
 HEADERS := src/bcn_layer.hpp \
 		   src/image.hpp \
@@ -24,7 +25,8 @@ HEADERS := src/bcn_layer.hpp \
 		   src/fence.hpp \
 		   src/logger.hpp \
 		   src/vk_func.hpp \
-		   src/vulkan/vk_layer.h
+		   src/vulkan/vk_layer.h \
+		   src/staging_resources.hpp
 
 SPIRV_SHADERS := src/s3tc.spv \
                  src/s3tc_iv.spv \
@@ -66,6 +68,6 @@ install: $(OUTPUT)
 	install -m 755 $(JSON) $(JSON_INSTALL)
 
 clean:
-	rm -rf $(OUTPUT)
-	rm -rf $(SPIRV_SHADERS)
-	rm -rf $(SPIRV_HEADERS)
+	rm -f $(OUTPUT)
+	rm -f $(SPIRV_SHADERS)
+	rm -f $(SPIRV_HEADERS)

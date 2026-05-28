@@ -1,5 +1,6 @@
 #include "queue.hpp"
 #include "command_buffer.hpp"
+#include "staging_resources.hpp"
 
 std::unordered_map<VkQueue, std::shared_ptr<struct queue>> queuesMap;
 
@@ -11,6 +12,93 @@ get_queue(VkQueue queue) {
 
 	return it->second.get();
 }
+
+#define COPY_INFOS(infos, count, vec) \
+    if (other->infos && other->count > 0) { \
+        vec.assign(other->infos, other->infos + other->count); \
+        this->infos = vec.data(); \
+    } else { \
+        this->infos = nullptr; \
+    }
+
+// An updatable VkSubmitInfo wrapper that allows inline modifications
+class VkSubmitInfoUpdater : public VkSubmitInfo {
+public:
+    VkSubmitInfoUpdater() {
+        *(VkSubmitInfo *) this = VkSubmitInfo { VK_STRUCTURE_TYPE_SUBMIT_INFO };
+    }
+
+    explicit VkSubmitInfoUpdater(const VkSubmitInfo *other) {
+        if (!other)
+            return;
+        *(VkSubmitInfo *) this = *other;
+        COPY_INFOS(pWaitSemaphores, waitSemaphoreCount, m_waitSemaphores);
+        COPY_INFOS(pWaitDstStageMask, waitSemaphoreCount, m_waitDstStageMask);
+        COPY_INFOS(pSignalSemaphores, signalSemaphoreCount, m_signalSemaphores);
+    }
+
+    void addSignalSemaphore(VkSemaphore semaphore) {
+        m_signalSemaphores.push_back(semaphore);
+        this->signalSemaphoreCount = static_cast<uint32_t>(m_signalSemaphores.size());
+        this->pSignalSemaphores = m_signalSemaphores.data();
+    }
+
+    void addWaitSemaphore(VkSemaphore semaphore, VkPipelineStageFlags flags = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT) {
+        m_waitSemaphores.push_back(semaphore);
+        m_waitDstStageMask.push_back(flags);
+        this->waitSemaphoreCount = static_cast<uint32_t>(m_waitSemaphores.size());
+        this->pWaitSemaphores = m_waitSemaphores.data();
+        this->pWaitDstStageMask = m_waitDstStageMask.data();
+    }
+
+private:
+    std::vector<VkSemaphore> m_waitSemaphores;
+    std::vector<VkPipelineStageFlags> m_waitDstStageMask;
+    std::vector<VkSemaphore> m_signalSemaphores;
+};
+
+class VkSubmitInfo2Updater : public VkSubmitInfo2 {
+public:
+    VkSubmitInfo2Updater() {
+        *(VkSubmitInfo2 *) this = VkSubmitInfo2 { VK_STRUCTURE_TYPE_SUBMIT_INFO_2 };
+    }
+
+    explicit VkSubmitInfo2Updater(const VkSubmitInfo2* other) {
+        if (!other)
+            return;
+        *(VkSubmitInfo2 *) this = *other;
+        COPY_INFOS(pWaitSemaphoreInfos, waitSemaphoreInfoCount, m_waitSemaphoreInfos);
+        COPY_INFOS(pSignalSemaphoreInfos, signalSemaphoreInfoCount, m_signalSemaphoreInfos);
+    }
+
+    void addSignalSemaphore(VkSemaphore semaphore, VkPipelineStageFlags2 stageMask = VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT) {
+        VkSemaphoreSubmitInfo info{
+            .sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
+            .semaphore = semaphore,
+            .stageMask = stageMask,
+        };
+
+        m_signalSemaphoreInfos.push_back(info);
+        this->signalSemaphoreInfoCount = static_cast<uint32_t>(m_signalSemaphoreInfos.size());
+        this->pSignalSemaphoreInfos = m_signalSemaphoreInfos.data();
+    }
+
+    void addWaitSemaphore(VkSemaphore semaphore, VkPipelineStageFlags2 stageMask = VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT) {
+        VkSemaphoreSubmitInfo info{
+            .sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
+            .semaphore = semaphore,
+            .stageMask = stageMask,
+        };
+
+        m_waitSemaphoreInfos.push_back(info);
+        this->waitSemaphoreInfoCount = static_cast<uint32_t>(m_waitSemaphoreInfos.size());
+        this->pWaitSemaphoreInfos = m_waitSemaphoreInfos.data();
+    }
+
+private:
+    std::vector<VkSemaphoreSubmitInfo> m_waitSemaphoreInfos;
+    std::vector<VkSemaphoreSubmitInfo> m_signalSemaphoreInfos;
+};
 
 VK_LAYER_EXPORT void VKAPI_CALL
 BCnLayer_GetDeviceQueue(VkDevice device,
@@ -36,20 +124,55 @@ BCnLayer_QueueSubmit(VkQueue queue,
 					 const VkSubmitInfo *pSubmitInfos,
 					 VkFence fence)
 {
-	scoped_lock l(global_lock);
+    struct queue *q;
 
-	struct queue *q = get_queue(queue);
-	struct fence *f = get_fence(fence);
+    // This must be scoped until the QueueSubmit call is made
+   	std::vector<VkSubmitInfoUpdater> updaters(submitInfoCount);
+    std::vector<std::pair<VkSemaphore, VkFence>> staging_fences;
+	{
+	    scoped_lock l(global_lock);
+    	q = get_queue(queue);
+    
+    	for (int i = 0; i < submitInfoCount; i++) {
+    		updaters[i] = VkSubmitInfoUpdater(&pSubmitInfos[i]);
+    		for (int j = 0; j < pSubmitInfos[i].commandBufferCount; j++) {
+    			struct command_buffer *cb = get_command_buffer(pSubmitInfos[i].pCommandBuffers[j]);
+    			auto stagingResources = std::move(cb->currentStagingResources);
+    			// In case this command buffer is reused, reset the staging resources.
+    			cb->currentStagingResources = std::make_unique<StagingResources>(q->device->handle);
+    			
+    			std::pair<VkSemaphore, VkFence> staging_fence = stagingResources->MakeFence();
+    			if (staging_fence.first != VK_NULL_HANDLE) {
+                    // Signal the temp semaphore
+                    updaters[i].addSignalSemaphore(staging_fence.first);
+                    staging_fences.push_back(staging_fence);
+                    cb->device->stagingResourcesQueue.push_back(std::move(stagingResources));
+    			}
+    		}
+    	}
+	}
 
-	for (uint32_t i = 0; i < submitInfoCount; i++) {
-		VkSubmitInfo submit_info = pSubmitInfos[i];
-		for (uint32_t j = 0; j < submit_info.commandBufferCount; j++) {
-			struct command_buffer *cb = get_command_buffer(submit_info.pCommandBuffers[j]);
-			cb->fence = f;
+	q->device->hasCleanupWork.notify_one();
+
+	std::vector<VkSubmitInfo> submit_infos(updaters.begin(), updaters.end());
+	VkResult result = q->device->table.QueueSubmit(queue, submitInfoCount, submit_infos.data(), fence);
+	if (result != VK_SUCCESS) {
+	    Logger::log("error", "QueueSubmit failed: %d", result);
+	    return result;
+	}
+	
+	// Submit an empty command buffer to queue the tmp sem and signal the resource completed fence
+	for (const auto& staging_fence : staging_fences) {
+		VkSubmitInfoUpdater submit_info;
+		submit_info.addWaitSemaphore(staging_fence.first);
+		result = q->device->table.QueueSubmit(queue, 1, &submit_info, staging_fence.second);
+		if (result != VK_SUCCESS) {
+		    Logger::log("error", "QueueSubmit of staging_fences failed: %d", result);
+		    return result;
 		}
 	}
 
-	return q->device->table.QueueSubmit(queue, submitInfoCount, pSubmitInfos, fence);
+	return result;
 }
 
 VK_LAYER_EXPORT VkResult VKAPI_CALL
@@ -58,18 +181,54 @@ BCnLayer_QueueSubmit2(VkQueue queue,
 					 const VkSubmitInfo2 *pSubmitInfos,
 					 VkFence fence)
 {
-	scoped_lock l(global_lock);
+    struct queue *q;
+    // This must be scoped until the QueueSubmit call is made
+   	std::vector<VkSubmitInfo2Updater> updaters(submitInfoCount);
+    std::vector<std::pair<VkSemaphore, VkFence>> staging_fences;
+    {
+    	scoped_lock l(global_lock);
+    
+    	q = get_queue(queue);
+    	struct fence *f = get_fence(fence);
+    
+    	for (int i = 0; i < submitInfoCount; i++) {
+            updaters[i] = VkSubmitInfo2Updater(&pSubmitInfos[i]);
+    		for (int j = 0; j < pSubmitInfos[i].commandBufferInfoCount; j++) {
+    			struct command_buffer *cb = get_command_buffer(pSubmitInfos[i].pCommandBufferInfos[j].commandBuffer);
+    			auto stagingResources = std::move(cb->currentStagingResources);
+    			// In case this command buffer is reused, reset the staging resources.
+    			cb->currentStagingResources = std::make_unique<StagingResources>(q->device->handle);
+    			
+    			std::pair<VkSemaphore, VkFence> staging_fence = stagingResources->MakeFence();
+    			if (staging_fence.first != VK_NULL_HANDLE) {
+                    // Signal the temp semaphore
+                    updaters[i].addSignalSemaphore(staging_fence.first);
+                    staging_fences.push_back(staging_fence);
+                    cb->device->stagingResourcesQueue.push_back(std::move(stagingResources));
+    			}
+    		}
+    	}
+    }
 
-	struct queue *q = get_queue(queue);
-	struct fence *f = get_fence(fence);
+    q->device->hasCleanupWork.notify_one();
 
-	for (uint32_t i = 0; i < submitInfoCount; i++) {
-		VkSubmitInfo2 submit_info = pSubmitInfos[i];
-		for (uint32_t j = 0; j < submit_info.commandBufferInfoCount; j++) {
-			struct command_buffer *cb = get_command_buffer(submit_info.pCommandBufferInfos[j].commandBuffer);
-			cb->fence = f;
+    std::vector<VkSubmitInfo2> submit_infos(updaters.begin(), updaters.end());
+	VkResult result = q->device->table.QueueSubmit2(queue, submitInfoCount, submit_infos.data(), fence);
+	if (result != VK_SUCCESS) {
+	    Logger::log("error", "QueueSubmit2 failed: %d", result);
+	    return result;
+	}
+	
+	// Submit an empty command buffer to queue the tmp sem and signal the resource completed fence
+	for (const auto& staging_fence : staging_fences) {
+		VkSubmitInfoUpdater submit_info;
+		submit_info.addWaitSemaphore(staging_fence.first);
+		result = q->device->table.QueueSubmit(queue, 1, &submit_info, staging_fence.second);
+		if (result != VK_SUCCESS) {
+		    Logger::log("error", "QueueSubmit of staging_fences failed: %d", result);
+		    return result;
 		}
 	}
 
-	return q->device->table.QueueSubmit2(queue, submitInfoCount, pSubmitInfos, fence);
+	return result;
 }

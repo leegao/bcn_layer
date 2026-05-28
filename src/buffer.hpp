@@ -1,7 +1,10 @@
 #ifndef __BUFFER_HPP
 #define __BUFFER_HPP
+#include <vulkan/vulkan.h>
 
-#include "bcn_layer.hpp"
+#include <memory>
+
+struct device;
 
 struct buffer {
     VkBuffer handle;

@@ -1,5 +1,6 @@
 #include "bcn.hpp"
 #include "buffer.hpp"
+#include "command_buffer.hpp"
 #include "image.hpp"
 #include "s3tc_spv.h"
 #include "s3tc_iv_spv.h"
@@ -369,6 +370,14 @@ decompress_bcn_compute(struct device *dev,
 	table = dev->table;
 	device = dev->handle;
 	
+	struct command_buffer *cb;
+	{
+	    scoped_lock l(global_lock);
+	    cb = get_command_buffer(commandbuffer);
+	    if (!cb)
+	        return VK_ERROR_NOT_PERMITTED;
+	}
+
 	int width = copy_region->imageExtent.width;
 	int height = copy_region->imageExtent.height;
 	int offset = copy_region->bufferOffset;
@@ -495,6 +504,7 @@ decompress_bcn_compute(struct device *dev,
 		}
 
 		image_info.imageView = dstImageView;
+		cb->currentStagingResources->AddStagingImageView(dstImageView);
 		
 		desc_writes[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;                      
 		desc_writes[1].pImageInfo = &image_info;                                                    

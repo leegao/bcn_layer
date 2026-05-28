@@ -1,5 +1,7 @@
 #include "buffer.hpp"
 
+#include "bcn_layer.hpp"
+
 std::unordered_map<VkBuffer, std::unique_ptr<struct buffer>> buffersMap;
 
 std::unique_ptr<struct buffer>

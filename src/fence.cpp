@@ -56,22 +56,7 @@ BCnLayer_WaitForFences(VkDevice device,
 	if (!dev)
 		return VK_ERROR_INITIALIZATION_FAILED;
 
-	result = dev->table.WaitForFences(device, fenceCount, pFences, waitAll, timeout);
-	if (result != VK_SUCCESS || dev->use_image_view)
-		return result;
-
-	scoped_lock l(global_lock);
-    
-	for (uint32_t i = 0; i < fenceCount; i++) {
-		struct fence *fence = get_fence(pFences[i]);
-		for (auto it = fence->staging_buffers.begin(); it != fence->staging_buffers.end();) {
-			dev->table.DestroyBuffer(device, (*it)->handle, (*it)->alloc);
-			dev->table.FreeMemory(device, (*it)->memory, (*it)->alloc);
-			it = fence->staging_buffers.erase(it);
-		}
-	}
-    
-	return VK_SUCCESS;
+	return dev->table.WaitForFences(device, fenceCount, pFences, waitAll, timeout);
 }
 
 VK_LAYER_EXPORT void VKAPI_CALL
