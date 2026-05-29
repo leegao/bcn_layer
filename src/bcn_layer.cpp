@@ -463,9 +463,9 @@ BCnLayer_CreateDevice(VkPhysicalDevice physicalDevice,
     }
 
     memoryIndex = idx < memoryProps.memoryTypeCount ? idx : UINT32_MAX;
-
+    VkPhysicalDeviceFeatures enabledFeatures;
     if (createInfo.pEnabledFeatures) {
-    	VkPhysicalDeviceFeatures enabledFeatures = *createInfo.pEnabledFeatures;
+    	enabledFeatures = *createInfo.pEnabledFeatures;
     	enabledFeatures.textureCompressionBC &= featuresMap[GetKey(physicalDevice)].textureCompressionBC;
     	createInfo.pEnabledFeatures = &enabledFeatures;
     }
