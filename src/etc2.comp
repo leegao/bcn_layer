@@ -1,0 +1,281 @@
+// AUTO-GENERATED - DO NOT EDIT, see  src/etc2.slang
+#version 450
+layout(row_major) uniform;
+layout(row_major) buffer;
+struct Registers_0
+{
+    ivec2 resolution_0;
+    uint format_0;
+    uint tile_stride_0;
+};
+
+layout(push_constant)
+layout(std430) uniform block_Registers_0
+{
+    ivec2 resolution_0;
+    uint format_0;
+    uint tile_stride_0;
+}registers_0;
+layout(std430, binding = 1) readonly buffer StructuredBuffer_vectorx3Cuintx2C2x3E_t_0 {
+    uvec2 _data[];
+} uInput_0;
+layout(std430, binding = 0) buffer StructuredBuffer_uint_t_0 {
+    uint _data[];
+} uOutput_0;
+const ivec2  etc1_color_modifier_table_0[8] = { ivec2(2, 8), ivec2(5, 17), ivec2(9, 29), ivec2(13, 42), ivec2(18, 60), ivec2(24, 80), ivec2(33, 106), ivec2(47, 183) };
+const int  etc2_distance_table_0[8] = { 3, 6, 11, 16, 23, 32, 41, 64 };
+const ivec4  etc2_alpha_modifier_table_0[16] = { ivec4(2, 5, 8, 14), ivec4(2, 6, 9, 12), ivec4(1, 4, 7, 12), ivec4(1, 3, 5, 12), ivec4(2, 5, 7, 11), ivec4(2, 6, 8, 10), ivec4(3, 6, 7, 10), ivec4(2, 4, 7, 10), ivec4(1, 5, 7, 9), ivec4(1, 4, 7, 9), ivec4(1, 3, 7, 9), ivec4(1, 4, 6, 9), ivec4(2, 3, 6, 9), ivec4(0, 1, 2, 9), ivec4(3, 5, 7, 8), ivec4(2, 4, 6, 8) };
+uint flip_endian_0(uint v_0)
+{
+    uvec4 words_0 = ((uvec4(v_0)) >> uvec4(0U, 8U, 16U, 24U)) & 255U;
+    return ((((words_0.x) << 24U) | ((words_0.y) << 16U)) | ((words_0.z) << 8U)) | ((words_0.w) << 0U);
+}
+
+uvec2 flip_endian_1(uvec2 v_1)
+{
+    return uvec2(flip_endian_0(v_1.y), flip_endian_0(v_1.x));
+}
+
+uint decode_etc2_alpha_0(uvec2 payload_0, int linear_pixel_0)
+{
+    int bit_offset_0 = 45 - 3 * linear_pixel_0;
+    uint _S1 = payload_0.y;
+    int bit_offset_1 = bit_offset_0 + 2;
+    return uint(clamp(int(bitfieldExtract(_S1,int(24U),int(8U))) + ((etc2_alpha_modifier_table_0[int(bitfieldExtract(_S1,int(16U),int(4U)))][int(bitfieldExtract(payload_0[bit_offset_0 >> 5],int(uint(bit_offset_0 & 31)),int(2U)))]) ^ (int(((payload_0[bit_offset_1 >> 5]) >> (bit_offset_1 & 31)) & 1U) - 1)) * int(bitfieldExtract(_S1,int(20U),int(4U))), 0, 255));
+}
+
+float linear_to_srgb_0(float c_0)
+{
+    float _S2 = clamp(c_0, 0.0, 1.0);
+    float _S3;
+    if(_S2 <= 0.00313080009073019)
+    {
+        _S3 = _S2 * 12.92000007629394531;
+    }
+    else
+    {
+        _S3 = 1.0549999475479126 * pow(_S2, 0.4166666567325592) - 0.05499999970197678;
+    }
+    return _S3;
+}
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+void main()
+{
+    ivec2 _S4 = ivec2(gl_WorkGroupID.xy * 8U + gl_LocalInvocationID.xy);
+    if((any(bvec2((greaterThanEqual(_S4,registers_0.resolution_0))))))
+    {
+        return;
+    }
+    bool is_srgb_0;
+    if((registers_0.format_0) == 151U)
+    {
+        is_srgb_0 = true;
+    }
+    else
+    {
+        is_srgb_0 = (registers_0.format_0) == 152U;
+    }
+    int ALPHA_BITS_0;
+    if(is_srgb_0)
+    {
+        ALPHA_BITS_0 = 8;
+    }
+    else
+    {
+        ALPHA_BITS_0 = 0;
+    }
+    if((registers_0.format_0) == 148U)
+    {
+        is_srgb_0 = true;
+    }
+    else
+    {
+        is_srgb_0 = (registers_0.format_0) == 152U;
+    }
+    ivec2 tile_coord_0 = _S4 >> 2;
+    ivec2 pixel_coord_0 = _S4 & 3;
+    int _S5 = pixel_coord_0.x;
+    int _S6 = pixel_coord_0.y;
+    int linear_pixel_1 = 4 * _S5 + _S6;
+    uint tile_index_0 = uint(tile_coord_0.y) * registers_0.tile_stride_0 + uint(tile_coord_0.x);
+    uvec2 color_payload_0;
+    uint alpha_result_0;
+    if(ALPHA_BITS_0 == 8)
+    {
+        uint _S7 = tile_index_0 * 2U;
+        uint _S8 = decode_etc2_alpha_0(flip_endian_1(uInput_0._data[uint(_S7)]), linear_pixel_1);
+        color_payload_0 = flip_endian_1(uInput_0._data[uint(_S7 + 1U)]);
+        alpha_result_0 = _S8;
+    }
+    else
+    {
+        color_payload_0 = flip_endian_1(uInput_0._data[uint(tile_index_0)]);
+        alpha_result_0 = 255U;
+    }
+    uvec3 rgb_result_0;
+    uint _S9 = color_payload_0.y;
+    uint flip_0 = _S9 & 1U;
+    uint subblock_0 = uint(((pixel_coord_0[flip_0]) & 2) >> 1U);
+    bool _S10 = ALPHA_BITS_0 == 1;
+    bool punchthrough_0;
+    if(_S10)
+    {
+        punchthrough_0 = (_S9 & 2U) == 0U;
+    }
+    else
+    {
+        punchthrough_0 = false;
+    }
+    bool etc1_compat_0;
+    if(ALPHA_BITS_0 != 1)
+    {
+        etc1_compat_0 = (_S9 & 2U) == 0U;
+    }
+    else
+    {
+        etc1_compat_0 = false;
+    }
+    ivec3 base_rgb_0;
+    if(etc1_compat_0)
+    {
+        ivec3 base_rgb_1 = (ivec3((color_payload_0.yyy) >> (uvec3(28U, 20U, 12U) - 4U * subblock_0)) & 15) * 17;
+        etc1_compat_0 = true;
+        base_rgb_0 = base_rgb_1;
+    }
+    else
+    {
+        int r_0 = int(bitfieldExtract(_S9,int(27U),int(5U)));
+        int _S11 = int(_S9);
+        int rd_0 = bitfieldExtract(_S11,int(24U),int(3U));
+        int g_0 = int(bitfieldExtract(_S9,int(19U),int(5U)));
+        int gd_0 = bitfieldExtract(_S11,int(16U),int(3U));
+        int b_0 = int(bitfieldExtract(_S9,int(11U),int(5U)));
+        int bd_0 = bitfieldExtract(_S11,int(8U),int(3U));
+        int g1_0 = g_0 + gd_0;
+        int b1_0 = b_0 + bd_0;
+        if(uint(r_0 + rd_0) > 31U)
+        {
+            int r1_val_0 = int(bitfieldExtract(_S9,int(24U),int(2U))) | (int(bitfieldExtract(_S9,int(27U),int(2U))) << 2);
+            int g1_val_0 = int(bitfieldExtract(_S9,int(20U),int(4U)));
+            int b1_val_0 = int(bitfieldExtract(_S9,int(16U),int(4U)));
+            int r2_0 = int(bitfieldExtract(_S9,int(12U),int(4U)));
+            int g2_0 = int(bitfieldExtract(_S9,int(8U),int(4U)));
+            int b2_0 = int(bitfieldExtract(_S9,int(4U),int(4U)));
+            uint da_0 = (bitfieldExtract(_S9,int(2U),int(2U)) << 1) | flip_0;
+            uint _S12 = color_payload_0.x;
+            int index_0 = int((_S12 >> (15 + linear_pixel_1)) & 2U) | int((_S12 >> linear_pixel_1) & 1U);
+            if(punchthrough_0)
+            {
+                punchthrough_0 = index_0 == 2;
+            }
+            if(index_0 == 0)
+            {
+                rgb_result_0 = uvec3(uint(r1_val_0), uint(g1_val_0), uint(b1_val_0)) * 17U;
+            }
+            else
+            {
+                rgb_result_0 = uvec3(clamp(ivec3(r2_0, g2_0, b2_0) * 17 + (2 - index_0) * etc2_distance_table_0[da_0], ivec3(0), ivec3(255)));
+            }
+            etc1_compat_0 = false;
+        }
+        else
+        {
+            if(uint(g1_0) > 31U)
+            {
+                int r1_val_1 = int(bitfieldExtract(_S9,int(27U),int(4U)));
+                int g1_val_1 = (int(bitfieldExtract(_S9,int(24U),int(3U))) << 1) | int((_S9 >> 20U) & 1U);
+                int b1_val_1 = int(bitfieldExtract(_S9,int(15U),int(3U))) | int((_S9 >> 16U) & 8U);
+                int r2_1 = int(bitfieldExtract(_S9,int(11U),int(4U)));
+                int g2_1 = int(bitfieldExtract(_S9,int(7U),int(4U)));
+                int b2_1 = int(bitfieldExtract(_S9,int(3U),int(4U)));
+                uint d_0 = (_S9 & 4U) + 2U * flip_0 + uint((r1_val_1 * 65536 + g1_val_1 * 256 + b1_val_1) >= (r2_1 * 65536 + g2_1 * 256 + b2_1));
+                uint _S13 = color_payload_0.x;
+                int msb_0 = int((_S13 >> (15 + linear_pixel_1)) & 2U);
+                int lsb_0 = int((_S13 >> linear_pixel_1) & 1U);
+                if(punchthrough_0)
+                {
+                    punchthrough_0 = (msb_0 + lsb_0) == 2;
+                }
+                if(msb_0 != 0)
+                {
+                    base_rgb_0 = ivec3(r2_1, g2_1, b2_1);
+                }
+                else
+                {
+                    base_rgb_0 = ivec3(r1_val_1, g1_val_1, b1_val_1);
+                }
+                rgb_result_0 = uvec3(clamp(base_rgb_0 * 17 + (1 - 2 * lsb_0) * etc2_distance_table_0[d_0], ivec3(0), ivec3(255)));
+                etc1_compat_0 = false;
+            }
+            else
+            {
+                bool _S14 = uint(b1_0) > 31U;
+                if(_S14)
+                {
+                    int r_1 = int(bitfieldExtract(_S9,int(25U),int(6U)));
+                    int g_1 = int(bitfieldExtract(_S9,int(17U),int(6U))) | (int(_S9 >> 18) & 64);
+                    int b_1 = (int(bitfieldExtract(_S9,int(7U),int(3U))) | (int(bitfieldExtract(_S9,int(11U),int(2U))) << 3)) | (int(_S9 >> 11) & 32);
+                    int rh_0 = int(flip_0) | (int(bitfieldExtract(_S9,int(2U),int(5U))) << 1);
+                    uint _S15 = color_payload_0.x;
+                    int rv_0 = int(bitfieldExtract(_S15,int(13U),int(6U)));
+                    int gh_0 = int(bitfieldExtract(_S15,int(25U),int(7U)));
+                    int gv_0 = int(bitfieldExtract(_S15,int(6U),int(7U)));
+                    int bh_0 = int(bitfieldExtract(_S15,int(19U),int(6U)));
+                    int bv_0 = int(bitfieldExtract(_S15,int(0U),int(6U)));
+                    ivec3 rgb_0 = ivec3((r_1 << 2) | (r_1 >> 4), (g_1 << 1) | (g_1 >> 6), (b_1 << 2) | (b_1 >> 4));
+                    rgb_result_0 = uvec3(clamp(rgb_0 + (((ivec3((rh_0 << 2) | (rh_0 >> 4), (gh_0 << 1) | (gh_0 >> 6), (bh_0 << 2) | (bh_0 >> 4)) - rgb_0) * _S5 + (ivec3((rv_0 << 2) | (rv_0 >> 4), (gv_0 << 1) | (gv_0 >> 6), (bv_0 << 2) | (bv_0 >> 4)) - rgb_0) * _S6 + 2) >> 2), ivec3(0), ivec3(255)));
+                    punchthrough_0 = false;
+                }
+                else
+                {
+                    ivec3 base_rgb_2 = ivec3(r_0, g_0, b_0) + int(subblock_0) * ivec3(rd_0, gd_0, bd_0);
+                    base_rgb_0 = (base_rgb_2 << 3) | (base_rgb_2 >> 2);
+                }
+                etc1_compat_0 = !_S14;
+            }
+        }
+    }
+    if(etc1_compat_0)
+    {
+        uint etc1_table_index_0 = bitfieldExtract(_S9,int(uint(5 - 3 * int(subblock_0 != 0U))),int(3U));
+        uint _S16 = color_payload_0.x;
+        int msb_1 = int((_S16 >> (15 + linear_pixel_1)) & 2U);
+        int lsb_1 = int((_S16 >> linear_pixel_1) & 1U);
+        int sgn_0 = 1 - msb_1;
+        int sgn_1;
+        if(punchthrough_0)
+        {
+            int sgn_2 = sgn_0 * lsb_1;
+            punchthrough_0 = (msb_1 + lsb_1) == 2;
+            sgn_1 = sgn_2;
+        }
+        else
+        {
+            sgn_1 = sgn_0;
+        }
+        rgb_result_0 = uvec3(clamp(base_rgb_0 + etc1_color_modifier_table_0[etc1_table_index_0][lsb_1] * sgn_1, ivec3(0), ivec3(255)));
+    }
+    if(_S10)
+    {
+    }
+    else
+    {
+        punchthrough_0 = false;
+    }
+    if(punchthrough_0)
+    {
+        rgb_result_0 = uvec3(ivec3(0));
+        alpha_result_0 = 0U;
+    }
+    if(is_srgb_0)
+    {
+        rgb_result_0[0] = uint(linear_to_srgb_0(float(rgb_result_0.x) / 255.0) * 255.0);
+        rgb_result_0[1] = uint(linear_to_srgb_0(float(rgb_result_0.y) / 255.0) * 255.0);
+        rgb_result_0[2] = uint(linear_to_srgb_0(float(rgb_result_0.z) / 255.0) * 255.0);
+    }
+    uvec4 _S17 = uvec4(rgb_result_0, alpha_result_0);
+    uOutput_0._data[uint(uint(_S4.y * registers_0.resolution_0.x + _S4.x))] = ((((_S17.x) & 255U) | (((_S17.y) & 255U) << 8U)) | (((_S17.z) & 255U) << 16U)) | ((_S17.w) << 24U);
+    return;
+}
+

@@ -5,6 +5,7 @@
 #include <unistd.h>
 #include <cmath>
 #include <utility>
+#include <vulkan/vulkan_core.h>
 
 std::unordered_map<void *, VkLayerInstanceDispatchTable> instanceDispatch;
 std::unordered_map<void *, VkInstance> instanceMap;
@@ -12,8 +13,6 @@ std::unordered_map<void *, VkPhysicalDeviceFeatures> featuresMap;
 std::unordered_map<void *, VkPhysicalDeviceProperties2> propertiesMap;
 std::unordered_map<void *, VkPhysicalDeviceDriverProperties> driverPropertiesMap;
 std::unordered_map<void *, std::shared_ptr<struct device>> deviceMap;
-
-bool bcn_compute_auto = false;
 
 std::mutex global_lock;
 
@@ -25,10 +24,10 @@ struct device *
 get_device(VkDevice device)
 {
     auto it = deviceMap.find(GetKey(device));
-    
+
 	if (it == deviceMap.end())
 		return nullptr;
-	
+
 	return it->second.get();
 }
 
@@ -73,9 +72,9 @@ BCnLayer_CreateInstance(const VkInstanceCreateInfo *pCreateInfo,
 {
 	VkLayerInstanceCreateInfo *layerCreateInfo = (VkLayerInstanceCreateInfo *)pCreateInfo->pNext;
 	VkResult result;
-	
+
     while (layerCreateInfo && (layerCreateInfo->sType != VK_STRUCTURE_TYPE_LOADER_INSTANCE_CREATE_INFO |
-    						   layerCreateInfo->function != VK_LAYER_LINK_INFO)) 
+    						   layerCreateInfo->function != VK_LAYER_LINK_INFO))
     {
     	layerCreateInfo = (VkLayerInstanceCreateInfo *)layerCreateInfo->pNext;
     }
@@ -83,7 +82,7 @@ BCnLayer_CreateInstance(const VkInstanceCreateInfo *pCreateInfo,
     if (!layerCreateInfo)
         return VK_ERROR_INITIALIZATION_FAILED;
 
-    
+
     PFN_vkGetInstanceProcAddr gip = layerCreateInfo->u.pLayerInfo->pfnNextGetInstanceProcAddr;
 	layerCreateInfo->u.pLayerInfo = layerCreateInfo->u.pLayerInfo->pNext;
 
@@ -94,8 +93,6 @@ BCnLayer_CreateInstance(const VkInstanceCreateInfo *pCreateInfo,
     	Logger::log("error", "Failed to create instance, res %d", result);
     	return result;
     }
-
-    bcn_compute_auto = getenv("BCN_COMPUTE_AUTO") && atoi(getenv("BCN_COMPUTE_AUTO"));
 
     VkLayerInstanceDispatchTable table;
     table.GetInstanceProcAddr = (PFN_vkGetInstanceProcAddr)gip(*pInstance, "vkGetInstanceProcAddr");
@@ -114,20 +111,20 @@ BCnLayer_CreateInstance(const VkInstanceCreateInfo *pCreateInfo,
     {
     	scoped_lock l(global_lock);
     	instanceDispatch[GetKey(*pInstance)] = table;
-    	instanceMap[GetKey(*pInstance)] = *pInstance;	
+    	instanceMap[GetKey(*pInstance)] = *pInstance;
     }
 
     return VK_SUCCESS;
 }
 
 VK_LAYER_EXPORT void VKAPI_CALL
-BCnLayer_DestroyInstance(VkInstance instance, 
+BCnLayer_DestroyInstance(VkInstance instance,
 						 const VkAllocationCallbacks *pAllocator)
 {
 	scoped_lock l(global_lock);
 	if (!instance)
 		return;
-		
+
 	VkLayerInstanceDispatchTable table = instanceDispatch[GetKey(instance)];
 	table.DestroyInstance(instance, pAllocator);
 	instanceMap.erase(GetKey(instance));
@@ -163,7 +160,7 @@ BCnLayer_EnumeratePhysicalDevices(VkInstance instance,
 		propertiesMap[GetKey(pPhysicalDevices[index])] = props2;
 		driverPropertiesMap[GetKey(pPhysicalDevices[index])] = driverProperties;
 	}
-	
+
 	return VK_SUCCESS;
 }
 
@@ -174,7 +171,7 @@ BCnLayer_GetPhysicalDeviceFeatures(VkPhysicalDevice physicalDevice,
 	scoped_lock l(global_lock);
 
 	instanceDispatch[GetKey(physicalDevice)].GetPhysicalDeviceFeatures(physicalDevice, pFeatures);
-	pFeatures->textureCompressionBC = true;
+	pFeatures->textureCompressionETC2 = true;
 }
 
 VK_LAYER_EXPORT void VKAPI_CALL
@@ -184,7 +181,7 @@ BCnLayer_GetPhysicalDeviceFeatures2(VkPhysicalDevice physicalDevice,
     scoped_lock l(global_lock);
 
     instanceDispatch[GetKey(physicalDevice)].GetPhysicalDeviceFeatures2(physicalDevice, pFeatures);
-    pFeatures->features.textureCompressionBC = true;
+    pFeatures->features.textureCompressionETC2 = true;
 }
 
 VKAPI_ATTR VkResult VKAPI_CALL
@@ -200,32 +197,12 @@ BCnLayer_GetPhysicalDeviceImageFormatProperties(VkPhysicalDevice physicalDevice,
 
 	VkPhysicalDeviceProperties2 props2 = propertiesMap[GetKey(physicalDevice)];
 	VkPhysicalDeviceDriverProperties driverProps = driverPropertiesMap[GetKey(physicalDevice)];
-	
+
 	switch(format) {
-    	case VK_FORMAT_BC1_RGB_UNORM_BLOCK:
-   		case VK_FORMAT_BC1_RGB_SRGB_BLOCK:
-   		case VK_FORMAT_BC1_RGBA_UNORM_BLOCK:
-   		case VK_FORMAT_BC1_RGBA_SRGB_BLOCK:
-   		case VK_FORMAT_BC2_UNORM_BLOCK:
-   		case VK_FORMAT_BC2_SRGB_BLOCK:
-   		case VK_FORMAT_BC3_UNORM_BLOCK:
-   		case VK_FORMAT_BC3_SRGB_BLOCK:
-   			if (bcn_compute_auto && driverProps.driverID == VK_DRIVER_ID_SAMSUNG_PROPRIETARY)
-   				break;
-   		case VK_FORMAT_BC4_UNORM_BLOCK:
-   		case VK_FORMAT_BC4_SNORM_BLOCK:
-   		case VK_FORMAT_BC5_UNORM_BLOCK:
-   		case VK_FORMAT_BC5_SNORM_BLOCK:
-   		case VK_FORMAT_BC6H_UFLOAT_BLOCK:
-   		case VK_FORMAT_BC6H_SFLOAT_BLOCK:
-   		case VK_FORMAT_BC7_UNORM_BLOCK:
-   		case VK_FORMAT_BC7_SRGB_BLOCK:
-   		    if (bcn_compute_auto && ((driverProps.driverID == VK_DRIVER_ID_QUALCOMM_PROPRIETARY && props2.properties.driverVersion > VK_MAKE_VERSION(512, 530, 0)) ||
-   		                             driverProps.driverID == VK_DRIVER_ID_MESA_TURNIP)) 
-   		    {
-   		    	break;
-   		    }
-   		      
+    	case VK_FORMAT_ETC2_R8G8B8A8_SRGB_BLOCK:
+   		case VK_FORMAT_ETC2_R8G8B8A8_UNORM_BLOCK:
+   		case VK_FORMAT_ETC2_R8G8B8_SRGB_BLOCK:
+   		case VK_FORMAT_ETC2_R8G8B8_UNORM_BLOCK:
    			if (type & VK_IMAGE_TYPE_1D) {
    				pImageFormatProperties->maxExtent.width = props2.properties.limits.maxImageDimension1D;
    			    pImageFormatProperties->maxExtent.height = 1;
@@ -235,8 +212,7 @@ BCnLayer_GetPhysicalDeviceImageFormatProperties(VkPhysicalDevice physicalDevice,
    				if (flags & VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT) {
    			    	pImageFormatProperties->maxExtent.width = props2.properties.limits.maxImageDimensionCube;
    			        pImageFormatProperties->maxExtent.height = props2.properties.limits.maxImageDimensionCube;
-   			    }
-   			    else {
+   			    } else {
    			    	pImageFormatProperties->maxExtent.width = props2.properties.limits.maxImageDimension2D;
    			        pImageFormatProperties->maxExtent.height = props2.properties.limits.maxImageDimension2D;
    			    }
@@ -253,13 +229,13 @@ BCnLayer_GetPhysicalDeviceImageFormatProperties(VkPhysicalDevice physicalDevice,
    				pImageFormatProperties->maxMipLevels = 1;
    			else
    				pImageFormatProperties->maxMipLevels = log2(pImageFormatProperties->maxExtent.width > pImageFormatProperties->maxExtent.height ? pImageFormatProperties->maxExtent.width :  pImageFormatProperties->maxExtent.height);
-   			
+
    			if (tiling & VK_IMAGE_TILING_LINEAR ||
    			    ((tiling & VK_IMAGE_TILING_OPTIMAL) && type & VK_IMAGE_TYPE_3D))
    				pImageFormatProperties->maxArrayLayers = 1;
    			else
    			    pImageFormatProperties->maxArrayLayers = props2.properties.limits.maxImageArrayLayers;
-   			    
+
    			pImageFormatProperties->sampleCounts = VK_SAMPLE_COUNT_1_BIT;
    			pImageFormatProperties->maxResourceSize = 562949953421312;
         	return VK_SUCCESS;
@@ -280,32 +256,12 @@ BCnLayer_GetPhysicalDeviceImageFormatProperties2(VkPhysicalDevice physicalDevice
 
 	VkPhysicalDeviceProperties2 props2 = propertiesMap[GetKey(physicalDevice)];
 	VkPhysicalDeviceDriverProperties driverProps = driverPropertiesMap[GetKey(physicalDevice)];
-	
+
     switch(pImageFormatInfo->format) {
-		case VK_FORMAT_BC1_RGB_UNORM_BLOCK:
-   		case VK_FORMAT_BC1_RGB_SRGB_BLOCK:
-   		case VK_FORMAT_BC1_RGBA_UNORM_BLOCK:
-   		case VK_FORMAT_BC1_RGBA_SRGB_BLOCK:
-   		case VK_FORMAT_BC2_UNORM_BLOCK:
-   		case VK_FORMAT_BC2_SRGB_BLOCK:
-   		case VK_FORMAT_BC3_UNORM_BLOCK:
-   		case VK_FORMAT_BC3_SRGB_BLOCK:
-   			if (bcn_compute_auto && driverProps.driverID == VK_DRIVER_ID_SAMSUNG_PROPRIETARY)
-   				break;
-   		case VK_FORMAT_BC4_UNORM_BLOCK:
-   		case VK_FORMAT_BC4_SNORM_BLOCK:
-   		case VK_FORMAT_BC5_UNORM_BLOCK:
-   		case VK_FORMAT_BC5_SNORM_BLOCK:
-   		case VK_FORMAT_BC6H_UFLOAT_BLOCK:
-   		case VK_FORMAT_BC6H_SFLOAT_BLOCK:
-   		case VK_FORMAT_BC7_UNORM_BLOCK:
-   		case VK_FORMAT_BC7_SRGB_BLOCK:
-   			if (bcn_compute_auto && ((driverProps.driverID == VK_DRIVER_ID_QUALCOMM_PROPRIETARY && props2.properties.driverVersion > VK_MAKE_VERSION(512, 530, 0)) ||
-   			                         driverProps.driverID == VK_DRIVER_ID_MESA_TURNIP)) 
-   			{
-   				break;
-   			}
-   				
+       	case VK_FORMAT_ETC2_R8G8B8A8_SRGB_BLOCK:
+  		case VK_FORMAT_ETC2_R8G8B8A8_UNORM_BLOCK:
+  		case VK_FORMAT_ETC2_R8G8B8_SRGB_BLOCK:
+  		case VK_FORMAT_ETC2_R8G8B8_UNORM_BLOCK:
    			if (pImageFormatInfo->type & VK_IMAGE_TYPE_1D) {
    				pImageFormatProperties->imageFormatProperties.maxExtent.width = props2.properties.limits.maxImageDimension1D;
    				pImageFormatProperties->imageFormatProperties.maxExtent.height = 1;
@@ -315,8 +271,7 @@ BCnLayer_GetPhysicalDeviceImageFormatProperties2(VkPhysicalDevice physicalDevice
    				if (pImageFormatInfo->flags & VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT) {
    			    	pImageFormatProperties->imageFormatProperties.maxExtent.width = props2.properties.limits.maxImageDimensionCube;
    			        pImageFormatProperties->imageFormatProperties.maxExtent.height = props2.properties.limits.maxImageDimensionCube;
-   			    }
-   			    else {
+   			    } else {
    			        pImageFormatProperties->imageFormatProperties.maxExtent.width = props2.properties.limits.maxImageDimension2D;
    			        pImageFormatProperties->imageFormatProperties.maxExtent.height = props2.properties.limits.maxImageDimension2D;
    			    }
@@ -333,13 +288,13 @@ BCnLayer_GetPhysicalDeviceImageFormatProperties2(VkPhysicalDevice physicalDevice
    				pImageFormatProperties->imageFormatProperties.maxMipLevels = 1;
    			else
    			    pImageFormatProperties->imageFormatProperties.maxMipLevels = log2(pImageFormatProperties->imageFormatProperties.maxExtent.width > pImageFormatProperties->imageFormatProperties.maxExtent.height ? pImageFormatProperties->imageFormatProperties.maxExtent.width :  pImageFormatProperties->imageFormatProperties.maxExtent.height);
-   			
+
    			if (pImageFormatInfo->tiling & VK_IMAGE_TILING_LINEAR ||
    			    ((pImageFormatInfo->tiling & VK_IMAGE_TILING_OPTIMAL) && pImageFormatInfo->type & VK_IMAGE_TYPE_3D))
    				pImageFormatProperties->imageFormatProperties.maxArrayLayers = 1;
    			else
    				pImageFormatProperties->imageFormatProperties.maxArrayLayers = props2.properties.limits.maxImageArrayLayers;
-   				
+
    			pImageFormatProperties->imageFormatProperties.sampleCounts = VK_SAMPLE_COUNT_1_BIT;
    			pImageFormatProperties->imageFormatProperties.maxResourceSize = 562949953421312;
       		return VK_SUCCESS;
@@ -358,37 +313,17 @@ BCnLayer_GetPhysicalDeviceFormatProperties(VkPhysicalDevice physicalDevice,
 {
 	scoped_lock l(global_lock);
 
-	instanceDispatch[GetKey(physicalDevice)].GetPhysicalDeviceFormatProperties(physicalDevice, 
+	instanceDispatch[GetKey(physicalDevice)].GetPhysicalDeviceFormatProperties(physicalDevice,
 		format, pFormatProperties);
-	                                  
+
 	VkPhysicalDeviceProperties2 props2 = propertiesMap[GetKey(physicalDevice)];
     VkPhysicalDeviceDriverProperties driverProps = driverPropertiesMap[GetKey(physicalDevice)];
-      
+
     switch (format) {
-    	case VK_FORMAT_BC1_RGB_UNORM_BLOCK:
-    	case VK_FORMAT_BC1_RGB_SRGB_BLOCK:
-    	case VK_FORMAT_BC1_RGBA_UNORM_BLOCK:
-    	case VK_FORMAT_BC1_RGBA_SRGB_BLOCK:
-        case VK_FORMAT_BC2_UNORM_BLOCK:
-   		case VK_FORMAT_BC2_SRGB_BLOCK:
-   		case VK_FORMAT_BC3_UNORM_BLOCK:
-   		case VK_FORMAT_BC3_SRGB_BLOCK:
-   			if (bcn_compute_auto && driverProps.driverID == VK_DRIVER_ID_SAMSUNG_PROPRIETARY)
-   				break;
-   		case VK_FORMAT_BC4_UNORM_BLOCK:
-   		case VK_FORMAT_BC4_SNORM_BLOCK:
-   		case VK_FORMAT_BC5_UNORM_BLOCK:
-   		case VK_FORMAT_BC5_SNORM_BLOCK:
-   		case VK_FORMAT_BC6H_UFLOAT_BLOCK:
-   		case VK_FORMAT_BC6H_SFLOAT_BLOCK:
-   		case VK_FORMAT_BC7_UNORM_BLOCK:
-   		case VK_FORMAT_BC7_SRGB_BLOCK:
-   			if (bcn_compute_auto && ((driverProps.driverID == VK_DRIVER_ID_QUALCOMM_PROPRIETARY && props2.properties.driverVersion > VK_MAKE_VERSION(512, 530, 0)) ||
-   			                         driverProps.driverID == VK_DRIVER_ID_MESA_TURNIP)) 
-   			{
-   				break;
-   			}
-   			                                        
+       	case VK_FORMAT_ETC2_R8G8B8A8_SRGB_BLOCK:
+  		case VK_FORMAT_ETC2_R8G8B8A8_UNORM_BLOCK:
+  		case VK_FORMAT_ETC2_R8G8B8_SRGB_BLOCK:
+  		case VK_FORMAT_ETC2_R8G8B8_UNORM_BLOCK:
    			pFormatProperties->optimalTilingFeatures |= VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT | VK_FORMAT_FEATURE_BLIT_SRC_BIT | VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT | VK_FORMAT_FEATURE_TRANSFER_DST_BIT;
    			return;
    		default:
@@ -463,10 +398,10 @@ BCnLayer_CreateDevice(VkPhysicalDevice physicalDevice,
     }
 
     memoryIndex = idx < memoryProps.memoryTypeCount ? idx : UINT32_MAX;
-
+    VkPhysicalDeviceFeatures enabledFeatures;
     if (createInfo.pEnabledFeatures) {
-    	VkPhysicalDeviceFeatures enabledFeatures = *createInfo.pEnabledFeatures;
-    	enabledFeatures.textureCompressionBC &= featuresMap[GetKey(physicalDevice)].textureCompressionBC;
+    	enabledFeatures = *createInfo.pEnabledFeatures;
+    	enabledFeatures.textureCompressionETC2 &= featuresMap[GetKey(physicalDevice)].textureCompressionETC2;
     	createInfo.pEnabledFeatures = &enabledFeatures;
     }
 
@@ -553,14 +488,12 @@ BCnLayer_CreateDevice(VkPhysicalDevice physicalDevice,
     device->props2 = propertiesMap[GetKey(physicalDevice)];
     device->driverProps = driverPropertiesMap[GetKey(physicalDevice)];
     device->features = featuresMap[GetKey(physicalDevice)];
-    device->compute_bcn_auto = bcn_compute_auto;
     device->table = table;
     device->memoryIndex = memoryIndex;
     device->queue = queue;
     device->alloc = pAllocator;
-    device->use_image_view = getenv("BCN_COMPUTE_IMAGE_VIEW") ? atoi(getenv("BCN_COMPUTE_IMAGE_VIEW")) : 1;
-   
-    result = create_bcn_compute_pipelines(device.get());
+
+    result = create_etc2_compute_pipelines(device.get());
     if (result != VK_SUCCESS) {
     	Logger::log("error", "Failed to create BCn compute pipeline, res %d", result);
         return result;
@@ -579,7 +512,7 @@ BCnLayer_CreateDevice(VkPhysicalDevice physicalDevice,
 }
 
 VK_LAYER_EXPORT void VKAPI_CALL
-BCnLayer_DestroyDevice(VkDevice device, 
+BCnLayer_DestroyDevice(VkDevice device,
 					   const VkAllocationCallbacks *pAllocator)
 {
 	struct device *dev;
@@ -600,14 +533,11 @@ BCnLayer_DestroyDevice(VkDevice device,
     scoped_lock l(global_lock);
 	for (const auto& pool : dev->pools)
 		dev->table.DestroyDescriptorPool(device, pool, nullptr);
-			
+
 	dev->pools.clear();
 	dev->table.DestroyDescriptorSetLayout(device, dev->setLayout, nullptr);
 	dev->table.DestroyPipelineLayout(device, dev->layout, nullptr);
-	dev->table.DestroyPipeline(device, dev->s3tcPipeline, nullptr);
-	dev->table.DestroyPipeline(device, dev->bc7Pipeline, nullptr);
-	dev->table.DestroyPipeline(device, dev->bc6Pipeline, nullptr);
-	dev->table.DestroyPipeline(device, dev->rgtcPipeline, nullptr);
+	dev->table.DestroyPipeline(device, dev->etc2Pipeline, nullptr);
 	for (auto& stagingResources : dev->stagingResourcesQueue) {
 		stagingResources->Cleanup();
 	}
@@ -615,12 +545,12 @@ BCnLayer_DestroyDevice(VkDevice device,
 	dev->syncPool.reset();
 	if (device != VK_NULL_HANDLE)
 		dev->table.DestroyDevice(device, pAllocator);
-				
+
 	deviceMap.erase(GetKey(device));
 }
 
 VK_LAYER_EXPORT PFN_vkVoidFunction VKAPI_CALL
-BCnLayer_GetDeviceProcAddr(VkDevice device, 
+BCnLayer_GetDeviceProcAddr(VkDevice device,
 						   const char *pName)
 {
 	GETPROCADDR(CreateImage);
@@ -653,9 +583,9 @@ BCnLayer_GetDeviceProcAddr(VkDevice device,
 }
 
 VK_LAYER_EXPORT PFN_vkVoidFunction VKAPI_CALL
-BCnLayer_GetInstanceProcAddr(VkInstance instance, 
+BCnLayer_GetInstanceProcAddr(VkInstance instance,
 							 const char *pName)
-{   
+{
 	GETPROCADDR(CreateInstance);
 	GETPROCADDR(EnumeratePhysicalDevices)
 	GETPROCADDR(GetPhysicalDeviceFeatures);

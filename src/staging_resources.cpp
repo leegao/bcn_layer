@@ -30,7 +30,7 @@ void StagingResources::Cleanup() {
     if (freed) return;
     if (completed == VK_NULL_HANDLE) return;
     if (semaphore == VK_NULL_HANDLE) return;
-    
+
     freed = true;
 
     auto *dev = get_device(device);
@@ -44,12 +44,12 @@ void StagingResources::Cleanup() {
         completed = VK_NULL_HANDLE;
         semaphore = VK_NULL_HANDLE;
     }
-    
+
     for (auto it = stagingBuffers.begin(); it != stagingBuffers.end();) {
         auto buf = std::move(*it);
         it = stagingBuffers.erase(it);
         if (!buf) continue;
-
+// #define DEBUG_BCN
 #ifdef DEBUG_BCN
         Logger::log("info", "  Peeking into buffer %p, memory %p", buf->handle, buf->memory);
         uint32_t* mappedData;

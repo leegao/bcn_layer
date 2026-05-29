@@ -24,9 +24,9 @@
 #define VK_LAYER_EXPORT extern "C"
 #endif
 
-#define VK_DRIVER_ID_QUALCOMM_PROPRIETARY 8                                  
-#define VK_DRIVER_ID_ARM_PROPRIETARY 9                                       
-#define VK_DRIVER_ID_MESA_TURNIP 18                                         
+#define VK_DRIVER_ID_QUALCOMM_PROPRIETARY 8
+#define VK_DRIVER_ID_ARM_PROPRIETARY 9
+#define VK_DRIVER_ID_MESA_TURNIP 18
 #define VK_DRIVER_ID_SAMSUNG_PROPRIETARY 21
 
 template <typename T>
@@ -65,14 +65,10 @@ struct device {
 	VkPhysicalDeviceDriverProperties driverProps;
 	bool compute_bcn_auto;
 	VkLayerDispatchTable table;
-	VkPipeline s3tcPipeline;
-	VkPipeline rgtcPipeline;
-	VkPipeline bc6Pipeline;
-	VkPipeline bc7Pipeline;
+	VkPipeline etc2Pipeline;
 	VkPipelineLayout layout;
 	VkQueue queue;
 	uint32_t memoryIndex;
-	int use_image_view;
 	VkDescriptorSetLayout setLayout;
 	std::vector<VkDescriptorPool> pools;
 	const VkAllocationCallbacks *alloc;

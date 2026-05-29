@@ -2,9 +2,9 @@ CXX := g++
 CXXFLAGS := -std=c++17 -fPIC
 LDFLAGS := -shared
 PREFIX := /usr
-JSON := libbcn_layer.json
-JSON_INSTALL := $(PREFIX)/share/vulkan/implicit_layer.d
-INSTALL := $(PREFIX)/lib/x86_64-linux-gnu
+JSON := libetc2_layer.json
+JSON_INSTALL := /home/leegao/.local/share/vulkan/implicit_layer.d
+INSTALL := /home/leegao/.local/share/vulkan/implicit_layer.d
 
 SOURCES := src/bcn_layer.cpp \
 		   src/image.cpp \
@@ -28,35 +28,21 @@ HEADERS := src/bcn_layer.hpp \
 		   src/vulkan/vk_layer.h \
 		   src/staging_resources.hpp
 
-SPIRV_SHADERS := src/s3tc.spv \
-                 src/s3tc_iv.spv \
-                 src/rgtc.spv \
-                 src/rgtc_iv.spv \
-                 src/bc6.spv \
-                 src/bc6_iv.spv \
-                 src/bc7.spv \
-                 src/bc7_iv.spv
-
-SPIRV_HEADERS := src/s3tc_spv.h \
-				 src/s3tc_iv_spv.h \
-				 src/rgtc_spv.h \
-				 src/rgtc_iv_spv.h \
-				 src/bc6_spv.h \
-				 src/bc6_iv_spv.h \
-				 src/bc7_spv.h \
-				 src/bc7_iv_spv.h
-	      
-OUTPUT := libbcn_layer.so
+OUTPUT := libetc2_layer.so
 
 all : $(OUTPUT)
 
+src/%.comp : src/%.slang
+	echo "// AUTO-GENERATED - DO NOT EDIT, see " $< > $@
+	slangc $< -target glsl -line-directive-mode none -D DISABLE_RECONSTRUCTION >> $@
+
 src/%.spv : src/%.comp
-	glslc $< -o $@
+	glslc -O $< -o $@
 
 src/%_spv.h : src/%.spv
 	cd src && xxd -i $(notdir $<) > $(notdir $@)
-	
-$(OUTPUT) : $(SOURCES) $(SPIRV_HEADERS) $(HEADERS)
+
+$(OUTPUT) : $(SOURCES) $(HEADERS) src/etc2.comp src/etc2_spv.h
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) $(SOURCES) -o $(OUTPUT)
 
 .PHONY: clean install
@@ -69,5 +55,3 @@ install: $(OUTPUT)
 
 clean:
 	rm -f $(OUTPUT)
-	rm -f $(SPIRV_SHADERS)
-	rm -f $(SPIRV_HEADERS)

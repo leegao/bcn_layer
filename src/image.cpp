@@ -1,4 +1,5 @@
 #include "image.hpp"
+#include "bcn.hpp"
 
 std::unordered_map<VkImage, std::unique_ptr<struct image>> imagesMap;
 
@@ -28,14 +29,14 @@ BCnLayer_CreateImage(VkDevice device,
 
 	table = dev->table;
 
-	if (is_supported_bcn_format(dev, pCreateInfo->format)) {
-	    auto target_format = get_format_for_bcn(pCreateInfo->format);
+	if (is_supported_etc2_format(dev, pCreateInfo->format)) {
+	    auto target_format = get_format_for_etc2(pCreateInfo->format);
 	    create_info.format = target_format;
 	    create_info.usage |= VK_IMAGE_USAGE_STORAGE_BIT;
 	    create_info.flags &= ~VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT;
 
-        // err:   vkCreateImage(): 
-        //     pCreateInfo->pNext<VkImageFormatListCreateInfo>.pViewFormats[0] (VK_FORMAT_BC3_UNORM_BLOCK) and 
+        // err:   vkCreateImage():
+        //     pCreateInfo->pNext<VkImageFormatListCreateInfo>.pViewFormats[0] (VK_FORMAT_BC3_UNORM_BLOCK) and
         //     VkImageCreateInfo::format (VK_FORMAT_R8G8B8A8_UNORM) are not class compatible.
         const VkBaseInStructure* pnext = reinterpret_cast<const VkBaseInStructure*>(create_info.pNext);
         while (pnext != nullptr) {
@@ -53,7 +54,7 @@ BCnLayer_CreateImage(VkDevice device,
                     break;
             }
             pnext = pnext->pNext;
-        }					
+        }
 	}
 
 	result = table.CreateImage(device, &create_info, pAllocator, pImage);
@@ -93,8 +94,8 @@ BCnLayer_CreateImageView(VkDevice device,
 
 	table = dev->table;
 
-	if (is_supported_bcn_format(dev, pCreateInfo->format)) {
-		create_info.format = get_format_for_bcn(pCreateInfo->format);
+	if (is_supported_etc2_format(dev, pCreateInfo->format)) {
+		create_info.format = get_format_for_etc2(pCreateInfo->format);
 	}
 
 	result = table.CreateImageView(device, &create_info, pAllocator, pImageView);
@@ -118,6 +119,6 @@ BCnLayer_DestroyImage(VkDevice device,
 	if (!dev || !img)
 		return;
 
-	dev->table.DestroyImage(device, image, pAllocator);	
+	dev->table.DestroyImage(device, image, pAllocator);
 	imagesMap.erase(image);
 }
