@@ -461,12 +461,21 @@ BCnLayer_CreateDevice(VkPhysicalDevice physicalDevice,
     	if (memoryProps.memoryTypes[idx].propertyFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)
         	break;
     }
+    
+    auto transcode_to_etc1 = getenv("BCN_TRANSCODE_TO_ETC1") ? atoi(getenv("BCN_TRANSCODE_TO_ETC1")) : 0;
+    auto transcode_to_etc2 = getenv("BCN_TRANSCODE_TO_ETC2") ? atoi(getenv("BCN_TRANSCODE_TO_ETC2")) : transcode_to_etc1;
+    if (transcode_to_etc2 && !featuresMap[GetKey(physicalDevice)].textureCompressionETC2) {
+        Logger::log("info", "textureCompressionETC2 is not supported, disabling ETC2 transcode");
+        transcode_to_etc2 = false;
+    }
 
     memoryIndex = idx < memoryProps.memoryTypeCount ? idx : UINT32_MAX;
     VkPhysicalDeviceFeatures enabledFeatures;
     if (createInfo.pEnabledFeatures) {
     	enabledFeatures = *createInfo.pEnabledFeatures;
     	enabledFeatures.textureCompressionBC &= featuresMap[GetKey(physicalDevice)].textureCompressionBC;
+        if (transcode_to_etc2)
+            enabledFeatures.textureCompressionETC2 = featuresMap[GetKey(physicalDevice)].textureCompressionETC2;
     	createInfo.pEnabledFeatures = &enabledFeatures;
     }
 
@@ -558,7 +567,12 @@ BCnLayer_CreateDevice(VkPhysicalDevice physicalDevice,
     device->memoryIndex = memoryIndex;
     device->queue = queue;
     device->alloc = pAllocator;
-    device->use_image_view = getenv("BCN_COMPUTE_IMAGE_VIEW") ? atoi(getenv("BCN_COMPUTE_IMAGE_VIEW")) : 1;
+    device->transcode_to_etc1 = transcode_to_etc1;
+    device->transcode_to_etc2 = transcode_to_etc2;
+    
+    if (!transcode_to_etc2) { // transcoding is mutually exclusive with use_image_view
+        device->use_image_view = getenv("BCN_COMPUTE_IMAGE_VIEW") ? atoi(getenv("BCN_COMPUTE_IMAGE_VIEW")) : 1;
+    }
    
     result = create_bcn_compute_pipelines(device.get());
     if (result != VK_SUCCESS) {

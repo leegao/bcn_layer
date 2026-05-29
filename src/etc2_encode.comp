@@ -1,0 +1,1074 @@
+// AUTO-GENERATED - DO NOT EDIT, see  src/etc2_encode.slang
+#version 450
+layout(row_major) uniform;
+layout(row_major) buffer;
+struct PackedArray_0
+{
+    uint  data_0[1];
+};
+
+struct Flags_0
+{
+    PackedArray_0 flags_0;
+};
+
+struct PushConstants_0
+{
+    ivec2 u_TextureDimensions_0;
+    Flags_0 u_Flags_0;
+};
+
+layout(push_constant)
+layout(std430) uniform block_PushConstants_0
+{
+    ivec2 u_TextureDimensions_0;
+    Flags_0 u_Flags_0;
+}pushConstants_0;
+layout(std430, binding = 0) readonly buffer StructuredBuffer_uint_t_0 {
+    uint _data[];
+} input_rgba8_buffer_0;
+layout(std430, binding = 1) buffer StructuredBuffer_vectorx3Cuintx2C2x3E_t_0 {
+    uvec2 _data[];
+} etc1_blocks_0;
+const uint  _S1[8] = { 3U, 6U, 11U, 16U, 23U, 32U, 41U, 64U };
+const uint  _S2[16] = { 2U, 8U, 5U, 17U, 9U, 29U, 13U, 42U, 18U, 60U, 24U, 80U, 33U, 106U, 47U, 183U };
+const uint  _S3[4] = { 2U, 5U, 8U, 14U };
+uint buffer_index_0;
+
+uint PackedArray_operatorx5Bx5D_get_0(PackedArray_0 this_0, uint n_0)
+{
+    return ((this_0.data_0[n_0 / 32U]) >> (n_0 % 32U)) & 1U;
+}
+
+struct PackedArray_1
+{
+    uint  data_0[4];
+};
+
+uint PackedArray_operatorx5Bx5D_get_1(PackedArray_1 this_1, uint n_1)
+{
+    return ((this_1.data_0[n_1 / 4U]) >> (n_1 % 4U * 8U)) & 255U;
+}
+
+struct PackedArray_2
+{
+    uint  data_0[1];
+};
+
+uint PackedArray_operatorx5Bx5D_get_2(PackedArray_2 this_2, uint n_2)
+{
+    return ((this_2.data_0[n_2 / 8U]) >> (n_2 % 8U * 4U)) & 15U;
+}
+
+struct PackedArray_3
+{
+    uint  data_0[2];
+};
+
+uint PackedArray_operatorx5Bx5D_get_3(PackedArray_3 this_3, uint n_3)
+{
+    return ((this_3.data_0[n_3 / 4U]) >> (n_3 % 4U * 8U)) & 255U;
+}
+
+struct PackedArray_4
+{
+    uint  data_0[1];
+};
+
+uint PackedArray_operatorx5Bx5D_get_4(PackedArray_4 this_4, uint n_4)
+{
+    return ((this_4.data_0[n_4 / 16U]) >> (n_4 % 16U * 2U)) & 3U;
+}
+
+bool Flags_use_sfloat16_get_0(Flags_0 this_5)
+{
+    return bool(PackedArray_operatorx5Bx5D_get_0(this_5.flags_0, 3U));
+}
+
+uint sfloat16_to_uint8_0(uint val_0)
+{
+    return clamp(uint(round((unpackHalf2x16((val_0 & 65535U)).x) * 255.0)), 0U, 255U);
+}
+
+bool Flags_use_snorm8_get_0(Flags_0 this_6)
+{
+    return bool(PackedArray_operatorx5Bx5D_get_0(this_6.flags_0, 4U));
+}
+
+void unpack_snorm_to_unorm_float_0(uint packed_val_0, out uint r_0, out uint g_0, out uint b_0, out uint a_0)
+{
+    vec4 unorm_float_0 = max(vec4(-1.0), vec4(ivec4(uvec4((packed_val_0 >> 0) & 255U, (packed_val_0 >> 8) & 255U, (packed_val_0 >> 16) & 255U, (packed_val_0 >> 24) & 255U) << 24) >> 24) / 127.0) * 0.5 + 0.5;
+    r_0 = uint(unorm_float_0.x * 255.0 + 0.5);
+    g_0 = uint(unorm_float_0.y * 255.0 + 0.5);
+    b_0 = uint(unorm_float_0.z * 255.0 + 0.5);
+    a_0 = uint(unorm_float_0.w * 255.0 + 0.5);
+    return;
+}
+
+bool Flags_use_alpha_get_0(Flags_0 this_7)
+{
+    return !bool(PackedArray_operatorx5Bx5D_get_0(this_7.flags_0, 2U));
+}
+
+PackedArray_2 PackedArray_x24init_0(uint  initialValues_0[4])
+{
+    PackedArray_2 _S4;
+    _S4.data_0[0] = 0U;
+    int n_5 = 0;
+    for(;;)
+    {
+        uint _S5 = uint(n_5);
+        if(_S5 < 4U)
+        {
+        }
+        else
+        {
+            break;
+        }
+        uint bitOffset_0 = _S5 % 8U * 4U;
+        _S4.data_0[_S5 / 8U] = ((_S4.data_0[_S5 / 8U]) & (~(15U << bitOffset_0))) | (((initialValues_0[n_5]) & 15U) << bitOffset_0);
+        n_5 = n_5 + 1;
+    }
+    return _S4;
+}
+
+PackedArray_1 PackedArray_x24init_1(uint  initialValues_1[16])
+{
+    PackedArray_1 _S6;
+    _S6.data_0[0] = 0U;
+    _S6.data_0[1] = 0U;
+    _S6.data_0[2] = 0U;
+    _S6.data_0[3] = 0U;
+    int n_6 = 0;
+    for(;;)
+    {
+        uint _S7 = uint(n_6);
+        if(_S7 < 16U)
+        {
+        }
+        else
+        {
+            break;
+        }
+        uint bitOffset_1 = _S7 % 4U * 8U;
+        _S6.data_0[_S7 / 4U] = ((_S6.data_0[_S7 / 4U]) & (~(255U << bitOffset_1))) | (((initialValues_1[n_6]) & 255U) << bitOffset_1);
+        n_6 = n_6 + 1;
+    }
+    return _S6;
+}
+
+PackedArray_3 PackedArray_x24init_2(uint  initialValues_2[8])
+{
+    PackedArray_3 _S8;
+    _S8.data_0[0] = 0U;
+    _S8.data_0[1] = 0U;
+    int n_7 = 0;
+    for(;;)
+    {
+        uint _S9 = uint(n_7);
+        if(_S9 < 8U)
+        {
+        }
+        else
+        {
+            break;
+        }
+        uint bitOffset_2 = _S9 % 4U * 8U;
+        _S8.data_0[_S9 / 4U] = ((_S8.data_0[_S9 / 4U]) & (~(255U << bitOffset_2))) | (((initialValues_2[n_7]) & 255U) << bitOffset_2);
+        n_7 = n_7 + 1;
+    }
+    return _S8;
+}
+
+void encode_etc2_alpha_0(PackedArray_1 alphas_0, inout uint alpha_p0_0, inout uint alpha_p1_0)
+{
+    int min_a_0 = 255;
+    int max_a_0 = 0;
+    int i_0 = 0;
+    for(;;)
+    {
+        if(i_0 < 16)
+        {
+        }
+        else
+        {
+            break;
+        }
+        uint a_1 = PackedArray_operatorx5Bx5D_get_1(alphas_0, uint(i_0));
+        int _S10 = int(min(uint(min_a_0), a_1));
+        int _S11 = int(max(uint(max_a_0), a_1));
+        int i_1 = i_0 + 1;
+        min_a_0 = _S10;
+        max_a_0 = _S11;
+        i_0 = i_1;
+    }
+    uint multiplier_0 = clamp(uint((max_a_0 - min_a_0) / 22), 0U, 15U);
+    alpha_p0_0 = (uint(min_a_0 & 255) | ((multiplier_0 & 15U) << 8)) | 0U;
+    alpha_p1_0 = 0U;
+    i_0 = 0;
+    for(;;)
+    {
+        if(i_0 < 16)
+        {
+        }
+        else
+        {
+            break;
+        }
+        int _S12 = int(PackedArray_operatorx5Bx5D_get_1(alphas_0, uint(i_0))) - min_a_0;
+        int min_err_0 = 1000;
+        int best_idx_0 = 0;
+        int m_0 = 0;
+        for(;;)
+        {
+            if(m_0 < 4)
+            {
+            }
+            else
+            {
+                break;
+            }
+            int err_0 = abs(int(uint(_S12) - PackedArray_operatorx5Bx5D_get_2(PackedArray_x24init_0(_S3), uint(m_0)) * uint(int(multiplier_0))));
+            if(err_0 < min_err_0)
+            {
+                min_err_0 = err_0;
+                best_idx_0 = m_0;
+            }
+            m_0 = m_0 + 1;
+        }
+        if(i_0 < 10)
+        {
+            alpha_p0_0 = alpha_p0_0 | (uint(best_idx_0) << (16 + i_0 * 3));
+        }
+        else
+        {
+            alpha_p1_0 = alpha_p1_0 | (uint(best_idx_0) << ((i_0 - 10) * 3));
+        }
+        i_0 = i_0 + 1;
+    }
+    return;
+}
+
+struct Pixels_0
+{
+    uint  data_1[16];
+};
+
+uvec3 Pixels_operatorx5Bx5D_get_0(Pixels_0 this_8, uint n_8)
+{
+    return uvec3((this_8.data_1[n_8]) & 255U, ((this_8.data_1[n_8]) >> 8) & 255U, ((this_8.data_1[n_8]) >> 16) & 255U);
+}
+
+uint luminance_0(uvec3 pixel_0)
+{
+    return (pixel_0.x + pixel_0.y + pixel_0.z) / 3U;
+}
+
+PackedArray_1 Pixels_Y_0(Pixels_0 this_9)
+{
+    PackedArray_1 Y_0;
+    int i_2 = 0;
+    for(;;)
+    {
+        if(i_2 < 16)
+        {
+        }
+        else
+        {
+            break;
+        }
+        uint _S13 = uint(i_2);
+        uint bitOffset_3 = _S13 % 4U * 8U;
+        Y_0.data_0[_S13 / 4U] = ((Y_0.data_0[_S13 / 4U]) & (~(255U << bitOffset_3))) | (((luminance_0(Pixels_operatorx5Bx5D_get_0(this_9, _S13))) & 255U) << bitOffset_3);
+        i_2 = i_2 + 1;
+    }
+    return Y_0;
+}
+
+struct FlagMode_0
+{
+    uint mode_0;
+};
+
+FlagMode_0 FlagMode_x24init_0(uint mode_1)
+{
+    FlagMode_0 _S14;
+    _S14.mode_0 = mode_1;
+    return _S14;
+}
+
+uint FlagMode_operatorx5Bx5D_get_0(FlagMode_0 this_10, uint n_9)
+{
+    if((this_10.mode_0) == 0U)
+    {
+        return n_9;
+    }
+    else
+    {
+        if((this_10.mode_0) == 1U)
+        {
+            return n_9 + 8U;
+        }
+        else
+        {
+            if((this_10.mode_0) == 2U)
+            {
+                return ((n_9 >> 1) << 2) + (n_9 & 1U);
+            }
+            else
+            {
+                return ((n_9 >> 1) << 2) + (n_9 & 1U) + 2U;
+            }
+        }
+    }
+}
+
+uvec3 quantize_pixel_0(uvec3 color_0)
+{
+    return ((color_0 >> 3U) & 31U) << 3U;
+}
+
+uvec3 quantize_pixel_1(uvec3 color_1)
+{
+    return ((color_1 >> 4U) & 15U) << 4U;
+}
+
+uint select_table_index_0(float c_target_0)
+{
+    if(c_target_0 < 12.5)
+    {
+        return 0U;
+    }
+    if(c_target_0 < 23.0)
+    {
+        return 1U;
+    }
+    if(c_target_0 < 35.5)
+    {
+        return 2U;
+    }
+    if(c_target_0 < 51.0)
+    {
+        return 3U;
+    }
+    if(c_target_0 < 70.0)
+    {
+        return 4U;
+    }
+    if(c_target_0 < 93.0)
+    {
+        return 5U;
+    }
+    if(c_target_0 < 144.5)
+    {
+        return 6U;
+    }
+    return 7U;
+}
+
+uint get_table_index_0(PackedArray_1 Y_1, FlagMode_0 sb_0)
+{
+    int i_3 = 0;
+    int avg_Y_0 = 0;
+    for(;;)
+    {
+        if(i_3 < 8)
+        {
+        }
+        else
+        {
+            break;
+        }
+        int avg_Y_1 = avg_Y_0 + int(PackedArray_operatorx5Bx5D_get_1(Y_1, FlagMode_operatorx5Bx5D_get_0(sb_0, uint(i_3))));
+        i_3 = i_3 + 1;
+        avg_Y_0 = avg_Y_1;
+    }
+    int avg_Y_2 = avg_Y_0 / 8;
+    i_3 = 0;
+    float high_Y_sum_0 = 0.0;
+    int high_count_0 = 0;
+    float low_Y_sum_0 = 0.0;
+    int low_count_0 = 0;
+    for(;;)
+    {
+        if(i_3 < 8)
+        {
+        }
+        else
+        {
+            break;
+        }
+        uint _S15 = PackedArray_operatorx5Bx5D_get_1(Y_1, FlagMode_operatorx5Bx5D_get_0(sb_0, uint(i_3)));
+        if(_S15 >= uint(avg_Y_2))
+        {
+            int _S16 = high_count_0 + 1;
+            high_Y_sum_0 = high_Y_sum_0 + float(_S15);
+            high_count_0 = _S16;
+        }
+        else
+        {
+            int _S17 = low_count_0 + 1;
+            low_Y_sum_0 = low_Y_sum_0 + float(_S15);
+            low_count_0 = _S17;
+        }
+        i_3 = i_3 + 1;
+    }
+    float high_avg_0;
+    if(high_count_0 > 0)
+    {
+        high_avg_0 = high_Y_sum_0 / float(high_count_0);
+    }
+    else
+    {
+        high_avg_0 = float(avg_Y_2);
+    }
+    float low_avg_0;
+    if(low_count_0 > 0)
+    {
+        low_avg_0 = low_Y_sum_0 / float(low_count_0);
+    }
+    else
+    {
+        low_avg_0 = float(avg_Y_2);
+    }
+    return select_table_index_0(0.5 * (high_avg_0 - low_avg_0));
+}
+
+void get_table_modifiers_0(int idx_0, out int small_0, out int big_0)
+{
+    int _S18 = idx_0 * 2;
+    PackedArray_1 etc1_mod_table_0 = PackedArray_x24init_1(_S2);
+    small_0 = int(PackedArray_operatorx5Bx5D_get_1(etc1_mod_table_0, uint(_S18)));
+    big_0 = int(PackedArray_operatorx5Bx5D_get_1(etc1_mod_table_0, uint(_S18 + 1)));
+    return;
+}
+
+int opt_selector_0(int table_idx_0, int Y_idx_0, int Y_avg_0, out uint s_0)
+{
+    int d_0;
+    int c_0;
+    get_table_modifiers_0(table_idx_0, d_0, c_0);
+    int T_0 = c_0 / 2 + d_0 / 2;
+    int e_0 = Y_idx_0 - Y_avg_0;
+    int _S19;
+    if(e_0 < 0)
+    {
+        _S19 = 1;
+    }
+    else
+    {
+        _S19 = 0;
+    }
+    uint sign_bit_0 = uint(_S19);
+    if((abs(e_0)) > T_0)
+    {
+        _S19 = 1;
+    }
+    else
+    {
+        _S19 = 0;
+    }
+    uint mag_bit_0 = uint(_S19);
+    s_0 = (sign_bit_0 << 1) | mag_bit_0;
+    if(mag_bit_0 == 1U)
+    {
+        _S19 = c_0;
+    }
+    else
+    {
+        _S19 = d_0;
+    }
+    int _S20;
+    if(sign_bit_0 == 1U)
+    {
+        _S20 = -1;
+    }
+    else
+    {
+        _S20 = 1;
+    }
+    return _S19 * _S20;
+}
+
+uint sse_0(uvec3 target_0, uvec3 base_0, int modifier_0)
+{
+    ivec3 diff_0 = ivec3(target_0) - clamp(ivec3(base_0) + modifier_0, ivec3(0), ivec3(255));
+    int _S21 = diff_0.x;
+    int _S22 = diff_0.y;
+    int _S23 = diff_0.z;
+    return uint(_S21 * _S21 + _S22 * _S22 + _S23 * _S23);
+}
+
+int process_subblock_etc1_0(Pixels_0 pixels_0, PackedArray_1 Y_2, FlagMode_0 sb_1, inout uvec3 best_color_0, out uint best_table_0, out PackedArray_4 best_selectors_0, inout bool reconstructed_0)
+{
+    best_color_0 = uvec3(0U);
+    int i_4 = 0;
+    for(;;)
+    {
+        if(i_4 < 8)
+        {
+        }
+        else
+        {
+            break;
+        }
+        best_color_0 = best_color_0 + Pixels_operatorx5Bx5D_get_0(pixels_0, FlagMode_operatorx5Bx5D_get_0(sb_1, uint(i_4)));
+        i_4 = i_4 + 1;
+    }
+    uvec3 _S24 = quantize_pixel_0(best_color_0 / 8U);
+    best_color_0 = _S24;
+    uint _S25 = luminance_0(_S24);
+    int initial_table_idx_0 = clamp(int(get_table_index_0(Y_2, sb_1)), 1, 6);
+    int _S26 = initial_table_idx_0 - 1;
+    int min_block_error_0 = 2147483647;
+    int t_0 = _S26;
+    for(;;)
+    {
+        if(t_0 <= (initial_table_idx_0 + 1))
+        {
+        }
+        else
+        {
+            break;
+        }
+        PackedArray_4 current_selectors_0;
+        int p_0 = 0;
+        int current_table_error_0 = 0;
+        for(;;)
+        {
+            if(p_0 < 8)
+            {
+            }
+            else
+            {
+                break;
+            }
+            uint idx_1 = FlagMode_operatorx5Bx5D_get_0(sb_1, uint(p_0));
+            uint _S27;
+            int modifier_1 = opt_selector_0(t_0, int(PackedArray_operatorx5Bx5D_get_1(Y_2, idx_1)), int(_S25), _S27);
+            uint bitOffset_4 = idx_1 % 16U * 2U;
+            current_selectors_0.data_0[idx_1 / 16U] = ((current_selectors_0.data_0[idx_1 / 16U]) & (~(3U << bitOffset_4))) | ((_S27 & 3U) << bitOffset_4);
+            int current_table_error_1 = current_table_error_0 + int(sse_0(Pixels_operatorx5Bx5D_get_0(pixels_0, idx_1), best_color_0, modifier_1));
+            p_0 = p_0 + 1;
+            current_table_error_0 = current_table_error_1;
+        }
+        if(current_table_error_0 < min_block_error_0)
+        {
+            best_table_0 = uint(t_0);
+            best_selectors_0 = current_selectors_0;
+            min_block_error_0 = current_table_error_0;
+        }
+        t_0 = t_0 + 1;
+    }
+    return min_block_error_0;
+}
+
+bool Flags_try_etc2_get_0(Flags_0 this_11)
+{
+    return !bool(PackedArray_operatorx5Bx5D_get_0(this_11.flags_0, 0U));
+}
+
+bool Flags_refine_etc2_get_0(Flags_0 this_12)
+{
+    return !bool(PackedArray_operatorx5Bx5D_get_0(this_12.flags_0, 1U));
+}
+
+void find_best_T_colors_0(Pixels_0 pixels_1, PackedArray_1 Y_3, out uvec3 c1_0, out uvec3 c2_0)
+{
+    const ivec3 _S28 = ivec3(0);
+    int i_5 = 0;
+    ivec3 sum_rgb_0 = _S28;
+    for(;;)
+    {
+        if(i_5 < 16)
+        {
+        }
+        else
+        {
+            break;
+        }
+        ivec3 sum_rgb_1 = sum_rgb_0 + ivec3(Pixels_operatorx5Bx5D_get_0(pixels_1, uint(i_5)));
+        i_5 = i_5 + 1;
+        sum_rgb_0 = sum_rgb_1;
+    }
+    ivec3 color_mean_0 = sum_rgb_0 / 16;
+    int max_dist_0 = -1;
+    int outlier_idx_0 = 0;
+    i_5 = 0;
+    for(;;)
+    {
+        if(i_5 < 16)
+        {
+        }
+        else
+        {
+            break;
+        }
+        ivec3 diff_1 = ivec3(Pixels_operatorx5Bx5D_get_0(pixels_1, uint(i_5))) - color_mean_0;
+        int _S29 = diff_1.x;
+        int _S30 = diff_1.y;
+        int _S31 = diff_1.z;
+        int sum_0 = _S29 + _S30 + _S31;
+        int ortho_dist_sq_0 = _S29 * _S29 + _S30 * _S30 + _S31 * _S31 - sum_0 * sum_0 / 3;
+        if(ortho_dist_sq_0 > max_dist_0)
+        {
+            max_dist_0 = ortho_dist_sq_0;
+            outlier_idx_0 = i_5;
+        }
+        i_5 = i_5 + 1;
+    }
+    ivec3 _S32 = ivec3(Pixels_operatorx5Bx5D_get_0(pixels_1, uint(outlier_idx_0)));
+    ivec3 seed1_0;
+    ivec3 seed2_0;
+    if(Flags_refine_etc2_get_0(pushConstants_0.u_Flags_0))
+    {
+        i_5 = 0;
+        seed1_0 = _S28;
+        int c1_count_0 = 0;
+        seed2_0 = _S28;
+        int c2_count_0 = 0;
+        for(;;)
+        {
+            if(i_5 < 16)
+            {
+            }
+            else
+            {
+                break;
+            }
+            ivec3 _S33 = ivec3(Pixels_operatorx5Bx5D_get_0(pixels_1, uint(i_5)));
+            ivec3 d1_0 = _S33 - color_mean_0;
+            ivec3 d2_0 = _S33 - _S32;
+            int _S34 = d1_0.x;
+            int _S35 = d1_0.y;
+            int _S36 = d1_0.z;
+            int _S37 = d2_0.x;
+            int _S38 = d2_0.y;
+            int _S39 = d2_0.z;
+            if((_S34 * _S34 + _S35 * _S35 + _S36 * _S36) <= (_S37 * _S37 + _S38 * _S38 + _S39 * _S39))
+            {
+                int _S40 = c1_count_0 + 1;
+                seed1_0 = seed1_0 + _S33;
+                c1_count_0 = _S40;
+            }
+            else
+            {
+                int _S41 = c2_count_0 + 1;
+                seed2_0 = seed2_0 + _S33;
+                c2_count_0 = _S41;
+            }
+            i_5 = i_5 + 1;
+        }
+        if(c2_count_0 > 0)
+        {
+            ivec3 _S42 = seed2_0 / c2_count_0;
+            sum_rgb_0 = _S42;
+        }
+        else
+        {
+            sum_rgb_0 = color_mean_0;
+        }
+        if(c1_count_0 > 0)
+        {
+            ivec3 _S43 = seed1_0 / c1_count_0;
+            seed1_0 = _S43;
+        }
+        else
+        {
+            seed1_0 = _S32;
+        }
+        ivec3 _S44 = seed1_0;
+        seed1_0 = sum_rgb_0;
+        seed2_0 = _S44;
+    }
+    else
+    {
+        seed1_0 = color_mean_0;
+        seed2_0 = _S32;
+    }
+    c1_0 = quantize_pixel_1(uvec3(seed1_0));
+    c2_0 = quantize_pixel_1(uvec3(seed2_0));
+    return;
+}
+
+int process_block_etc2_0(Pixels_0 pixels_2, PackedArray_1 Y_4, inout uvec3  best_colors_0[2], out uint best_distance_0, out PackedArray_4 best_selectors_1, inout bool reconstructed_1)
+{
+    uvec3 c1_1;
+    uvec3 c2_1;
+    find_best_T_colors_0(pixels_2, Y_4, c1_1, c2_1);
+    best_colors_0[0] = c1_1;
+    best_colors_0[1] = c2_1;
+    int min_block_error_1 = 2147483647;
+    uint t_1 = 0U;
+    for(;;)
+    {
+        if(t_1 < 8U)
+        {
+        }
+        else
+        {
+            break;
+        }
+        int _S45 = int(PackedArray_operatorx5Bx5D_get_3(PackedArray_x24init_2(_S1), t_1));
+        PackedArray_4 current_selectors_1;
+        int i_6 = 0;
+        int current_block_error_0 = 0;
+        for(;;)
+        {
+            if(i_6 < 16)
+            {
+            }
+            else
+            {
+                break;
+            }
+            uint _S46 = uint(i_6);
+            uvec3 _S47 = Pixels_operatorx5Bx5D_get_0(pixels_2, _S46);
+            int err0_0 = int(sse_0(_S47, c1_1, 0));
+            int err1_0 = int(sse_0(_S47, c2_1, _S45));
+            int err2_0 = int(sse_0(_S47, c2_1, 0));
+            int err3_0 = int(sse_0(_S47, c2_1, - _S45));
+            bool _S48 = err1_0 < err0_0;
+            int sel1_0;
+            if(_S48)
+            {
+                sel1_0 = 1;
+            }
+            else
+            {
+                sel1_0 = 0;
+            }
+            int e1_0;
+            if(_S48)
+            {
+                e1_0 = err1_0;
+            }
+            else
+            {
+                e1_0 = err0_0;
+            }
+            bool _S49 = err2_0 < e1_0;
+            int sel2_0;
+            if(_S49)
+            {
+                sel2_0 = 2;
+            }
+            else
+            {
+                sel2_0 = sel1_0;
+            }
+            int e2_0;
+            if(_S49)
+            {
+                e2_0 = err2_0;
+            }
+            else
+            {
+                e2_0 = e1_0;
+            }
+            bool _S50 = err3_0 < e2_0;
+            int sel3_0;
+            if(_S50)
+            {
+                sel3_0 = 3;
+            }
+            else
+            {
+                sel3_0 = sel2_0;
+            }
+            int e3_0;
+            if(_S50)
+            {
+                e3_0 = err3_0;
+            }
+            else
+            {
+                e3_0 = e2_0;
+            }
+            uint bitOffset_5 = _S46 % 16U * 2U;
+            current_selectors_1.data_0[_S46 / 16U] = ((current_selectors_1.data_0[_S46 / 16U]) & (~(3U << bitOffset_5))) | ((uint(sel3_0) & 3U) << bitOffset_5);
+            int current_block_error_1 = current_block_error_0 + e3_0;
+            i_6 = i_6 + 1;
+            current_block_error_0 = current_block_error_1;
+        }
+        if(current_block_error_0 < min_block_error_1)
+        {
+            best_distance_0 = t_1;
+            best_selectors_1 = current_selectors_1;
+            min_block_error_1 = current_block_error_0;
+        }
+        t_1 = t_1 + 1U;
+    }
+    return min_block_error_1;
+}
+
+uint pack_selectors_0(PackedArray_4 selectors_0)
+{
+    int i_7 = 0;
+    uint px_0 = 0U;
+    for(;;)
+    {
+        if(i_7 < 16)
+        {
+        }
+        else
+        {
+            break;
+        }
+        int lp_0 = i_7 % 4 * 4 + i_7 / 4;
+        uint sel_0 = PackedArray_operatorx5Bx5D_get_4(selectors_0, uint(i_7));
+        uint px_1 = (px_0 | ((sel_0 & 1U) << uint(lp_0))) | (((sel_0 >> 1) & 1U) << uint(16 + lp_0));
+        i_7 = i_7 + 1;
+        px_0 = px_1;
+    }
+    return px_0;
+}
+
+uint pack_etc1_RGB_payload_0(uvec3 c0_0, uvec3 c1_2, uint t0_0, uint t1_0, bool horizontal_0)
+{
+    uvec3 _S51 = c0_0.xyz;
+    ivec3 c0_5i_0 = ivec3(_S51) >> 3;
+    uvec3 _S52 = c1_2.xyz;
+    uvec3 c0_5_0 = uvec3(c0_5i_0) & 31U;
+    uvec3 c0_4_0 = (_S51 >> 4) & 15U;
+    uvec3 c1_4_0 = (_S52 >> 4) & 15U;
+    ivec3 diff_i_0 = (ivec3(_S52) >> 3) - c0_5i_0;
+    uvec3 diff_3_0 = uvec3(diff_i_0) & 7U;
+    ivec3 _S53 = c0_5i_0 + diff_i_0;
+    bvec3 valid_target_0 = bvec3(uvec3(greaterThanEqual(_S53,ivec3(0)))&uvec3(lessThanEqual(_S53,ivec3(31))));
+    bool diffmode_0;
+    if((all(bvec3((bvec3(uvec3(greaterThanEqual(diff_i_0,ivec3(-4)))&uvec3(lessThanEqual(diff_i_0,ivec3(3)))))))))
+    {
+        diffmode_0 = (all(bvec3((valid_target_0))));
+    }
+    else
+    {
+        diffmode_0 = false;
+    }
+    uint py_0 = ((0U | (uint(horizontal_0) & 1U)) | ((uint(diffmode_0) & 1U) << 1)) | ((t0_0 << 5) | (t1_0 << 2));
+    uint py_1;
+    if(diffmode_0)
+    {
+        py_1 = (py_0 | ((((diff_3_0.x) << 24) | ((diff_3_0.y) << 16)) | ((diff_3_0.z) << 8))) | ((((c0_5_0.x) << 27) | ((c0_5_0.y) << 19)) | ((c0_5_0.z) << 11));
+    }
+    else
+    {
+        py_1 = (py_0 | ((((c1_4_0.x) << 24) | ((c1_4_0.y) << 16)) | ((c1_4_0.z) << 8))) | ((((c0_4_0.x) << 28) | ((c0_4_0.y) << 20)) | ((c0_4_0.z) << 12));
+    }
+    return py_1;
+}
+
+uint pack_etc2_T_RGB_payload_0(uvec3 c0_1, uvec3 c1_3, uint distance_idx_0)
+{
+    uvec3 c0_4_1 = (c0_1 >> 4) & 15U;
+    uvec3 c1_4_1 = (c1_3 >> 4) & 15U;
+    uint r0_0 = (c0_4_1.x) & 15U;
+    uint r0_low_0 = r0_0 & 3U;
+    uint r0_high_0 = (r0_0 >> 2U) & 3U;
+    uint legacy_rd_26_0;
+    uint legacy_r0_29_31_0;
+    if((r0_high_0 + r0_low_0) < 4U)
+    {
+        legacy_rd_26_0 = 1U;
+        legacy_r0_29_31_0 = 0U;
+    }
+    else
+    {
+        legacy_rd_26_0 = 0U;
+        legacy_r0_29_31_0 = 7U;
+    }
+    return ((((((((0U | ((distance_idx_0 & 1U) << 0)) | 2U) | (((distance_idx_0 >> 1) & 3U) << 2)) | ((((c1_4_1.z) << 4) | ((c1_4_1.y) << 8)) | ((c1_4_1.x) << 12))) | (((c0_4_1.z) << 16) | ((c0_4_1.y) << 20))) | (r0_low_0 << 24)) | (legacy_rd_26_0 << 26)) | (r0_high_0 << 27)) | (legacy_r0_29_31_0 << 29);
+}
+
+uvec2 encode_etc2_block_0(Pixels_0 pixels_3)
+{
+    PackedArray_1 Y_5 = Pixels_Y_0(pixels_3);
+    uint _S54 = PackedArray_operatorx5Bx5D_get_1(Y_5, 0U) + PackedArray_operatorx5Bx5D_get_1(Y_5, 1U);
+    uint _S55 = PackedArray_operatorx5Bx5D_get_1(Y_5, 4U);
+    uint _S56 = PackedArray_operatorx5Bx5D_get_1(Y_5, 5U);
+    int Y_top_0 = int(_S54 + PackedArray_operatorx5Bx5D_get_1(Y_5, 2U) + PackedArray_operatorx5Bx5D_get_1(Y_5, 3U) + _S55 + _S56 + PackedArray_operatorx5Bx5D_get_1(Y_5, 6U) + PackedArray_operatorx5Bx5D_get_1(Y_5, 7U));
+    uint _S57 = PackedArray_operatorx5Bx5D_get_1(Y_5, 8U);
+    uint _S58 = PackedArray_operatorx5Bx5D_get_1(Y_5, 9U);
+    uint _S59 = PackedArray_operatorx5Bx5D_get_1(Y_5, 12U);
+    uint _S60 = PackedArray_operatorx5Bx5D_get_1(Y_5, 13U);
+    int Y_total_0 = int(uint(Y_top_0) + _S57 + _S58 + PackedArray_operatorx5Bx5D_get_1(Y_5, 10U) + PackedArray_operatorx5Bx5D_get_1(Y_5, 11U) + _S59 + _S60 + PackedArray_operatorx5Bx5D_get_1(Y_5, 14U) + PackedArray_operatorx5Bx5D_get_1(Y_5, 15U));
+    int Y_left_0 = int(_S54 + _S55 + _S56 + _S57 + _S58 + _S59 + _S60);
+    bool horizontal_1 = (abs(Y_top_0 - (Y_total_0 - Y_top_0))) > (abs(Y_left_0 - (Y_total_0 - Y_left_0)));
+    FlagMode_0 _S61;
+    if(horizontal_1)
+    {
+        _S61 = FlagMode_x24init_0(0U);
+    }
+    else
+    {
+        _S61 = FlagMode_x24init_0(2U);
+    }
+    FlagMode_0 _S62;
+    if(horizontal_1)
+    {
+        _S62 = FlagMode_x24init_0(1U);
+    }
+    else
+    {
+        _S62 = FlagMode_x24init_0(3U);
+    }
+    uvec3  etc1_colors_0[2];
+    uint  etc1_tables_0[2];
+    PackedArray_4 etc1_selectors_0;
+    bool etc1_reconstructed_0;
+    int block_0 = 0;
+    int etc1_sse_0 = 0;
+    for(;;)
+    {
+        if(block_0 < 2)
+        {
+        }
+        else
+        {
+            break;
+        }
+        FlagMode_0 _S63;
+        if(block_0 == 0)
+        {
+            _S63 = _S61;
+        }
+        else
+        {
+            _S63 = _S62;
+        }
+        int sse_1 = process_subblock_etc1_0(pixels_3, Y_5, _S63, etc1_colors_0[block_0], etc1_tables_0[block_0], etc1_selectors_0, etc1_reconstructed_0);
+        int etc1_sse_1 = etc1_sse_0 + sse_1;
+        block_0 = block_0 + 1;
+        etc1_sse_0 = etc1_sse_1;
+    }
+    bool _S64 = Flags_try_etc2_get_0(pushConstants_0.u_Flags_0);
+    uvec3  etc2_colors_0[2];
+    uint etc2_distance_0;
+    PackedArray_4 etc2_selectors_0;
+    bool etc2_reconstructed_0;
+    int etc2_sse_0;
+    if(_S64)
+    {
+        int _S65 = process_block_etc2_0(pixels_3, Y_5, etc2_colors_0, etc2_distance_0, etc2_selectors_0, etc2_reconstructed_0);
+        etc2_sse_0 = _S65;
+    }
+    else
+    {
+        etc2_sse_0 = 0;
+    }
+    bool _S66;
+    if(_S64)
+    {
+        _S66 = etc2_sse_0 < etc1_sse_0;
+    }
+    else
+    {
+        _S66 = false;
+    }
+    if(!_S66)
+    {
+        return uvec2(pack_selectors_0(etc1_selectors_0), pack_etc1_RGB_payload_0(etc1_colors_0[0], etc1_colors_0[1], etc1_tables_0[0], etc1_tables_0[1], horizontal_1));
+    }
+    else
+    {
+        return uvec2(pack_selectors_0(etc2_selectors_0), pack_etc2_T_RGB_payload_0(etc2_colors_0[0], etc2_colors_0[1], etc2_distance_0));
+    }
+}
+
+uint flip_endian_encode_0(uint v_0)
+{
+    uvec4 words_0 = ((uvec4(v_0)) >> uvec4(0U, 8U, 16U, 24U)) & 255U;
+    return ((((words_0.x) << 24U) | ((words_0.y) << 16U)) | ((words_0.z) << 8U)) | ((words_0.w) << 0U);
+}
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+void main()
+{
+    ivec2 _S67 = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 tex_coord_0 = _S67 * 4;
+    if((any(bvec2((greaterThanEqual(tex_coord_0,pushConstants_0.u_TextureDimensions_0))))))
+    {
+        return;
+    }
+    buffer_index_0 = uint(_S67.y * (pushConstants_0.u_TextureDimensions_0.x / 4) + _S67.x);
+    Pixels_0 pixels_4;
+    PackedArray_1 alphas_1;
+    uint _S68 = uint(pushConstants_0.u_TextureDimensions_0.x);
+    int y_0 = 0;
+    for(;;)
+    {
+        if(y_0 < 4)
+        {
+        }
+        else
+        {
+            break;
+        }
+        int x_0 = 0;
+        for(;;)
+        {
+            if(x_0 < 4)
+            {
+            }
+            else
+            {
+                break;
+            }
+            uint r_1;
+            uint g_1;
+            uint b_1;
+            uint a_2;
+            if(Flags_use_sfloat16_get_0(pushConstants_0.u_Flags_0))
+            {
+                uint tex_coord_1 = (uint(tex_coord_0.y + y_0) * _S68 + uint(tex_coord_0.x + x_0)) * 2U;
+                uint hi_0 = input_rgba8_buffer_0._data[uint(tex_coord_1)];
+                r_1 = sfloat16_to_uint8_0((hi_0 >> 0) & 65535U);
+                g_1 = sfloat16_to_uint8_0((hi_0 >> 16) & 65535U);
+                uint lo_0 = input_rgba8_buffer_0._data[uint(tex_coord_1 + 1U)];
+                b_1 = sfloat16_to_uint8_0((lo_0 >> 0) & 65535U);
+                a_2 = sfloat16_to_uint8_0((lo_0 >> 16) & 65535U);
+            }
+            else
+            {
+                if(Flags_use_snorm8_get_0(pushConstants_0.u_Flags_0))
+                {
+                    unpack_snorm_to_unorm_float_0(input_rgba8_buffer_0._data[uint(uint(tex_coord_0.y + y_0) * _S68 + uint(tex_coord_0.x + x_0))], r_1, g_1, b_1, a_2);
+                }
+                else
+                {
+                    uint tex_element_0 = input_rgba8_buffer_0._data[uint(uint(tex_coord_0.y + y_0) * _S68 + uint(tex_coord_0.x + x_0))];
+                    a_2 = (tex_element_0 >> 24) & 255U;
+                    b_1 = (tex_element_0 >> 16) & 255U;
+                    g_1 = (tex_element_0 >> 8) & 255U;
+                    r_1 = (tex_element_0 >> 0) & 255U;
+                }
+            }
+            uint _S69 = uint(y_0 * 4 + x_0);
+            pixels_4.data_1[_S69] = (r_1 | (g_1 << 8)) | (b_1 << 16);
+            uint bitOffset_6 = _S69 % 4U * 8U;
+            alphas_1.data_0[_S69 / 4U] = ((alphas_1.data_0[_S69 / 4U]) & (~(255U << bitOffset_6))) | ((a_2 & 255U) << bitOffset_6);
+            x_0 = x_0 + 1;
+        }
+        y_0 = y_0 + 1;
+    }
+    uint alpha_p0_1 = 0U;
+    uint alpha_p1_1 = 0U;
+    if(Flags_use_alpha_get_0(pushConstants_0.u_Flags_0))
+    {
+        encode_etc2_alpha_0(alphas_1, alpha_p0_1, alpha_p1_1);
+    }
+    uvec2 packed_0 = encode_etc2_block_0(pixels_4);
+    uint color_p0_0 = flip_endian_encode_0(packed_0.y);
+    uint color_p1_0 = flip_endian_encode_0(packed_0.x);
+    if(Flags_use_alpha_get_0(pushConstants_0.u_Flags_0))
+    {
+        etc1_blocks_0._data[uint(buffer_index_0 * 2U)] = uvec2(alpha_p0_1, alpha_p1_1);
+        etc1_blocks_0._data[uint(buffer_index_0 * 2U + 1U)] = uvec2(color_p0_0, color_p1_0);
+    }
+    else
+    {
+        etc1_blocks_0._data[uint(buffer_index_0)] = uvec2(color_p0_0, color_p1_0);
+    }
+    return;
+}
+
