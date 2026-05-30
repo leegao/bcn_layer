@@ -375,7 +375,7 @@ decompress_bcn_compute(struct device *dev,
 	    scoped_lock l(global_lock);
 	    cb = get_command_buffer(commandbuffer);
 	    if (!cb)
-	        return VK_ERROR_NOT_PERMITTED;
+	        return VK_ERROR_INITIALIZATION_FAILED;
 	}
 
 	int width = copy_region->imageExtent.width;
