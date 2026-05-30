@@ -7,3 +7,4 @@ src/bc6_spv.h
 src/bc6_iv_spv.h
 src/bc7_spv.h
 src/bc7_iv_spv.h
+build*/
