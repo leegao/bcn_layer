@@ -1,3 +1,4 @@
+.zed
 libbcn_layer.so
 src/s3tc_spv.h
 src/s3tc_iv_spv.h
@@ -8,3 +9,5 @@ src/bc6_iv_spv.h
 src/bc7_spv.h
 src/bc7_iv_spv.h
 build*/
+compile*.sh
+demo.sh
