@@ -24,6 +24,7 @@ public:
     void Cleanup();
     void AddStagingBuffer(std::unique_ptr<struct buffer> buf) { stagingBuffers.push_back(std::move(buf)); }
     void AddStagingImageView(VkImageView view) { stagingImageViews.push_back(view); }
+    void AddDescriptorSet(VkDescriptorPool pool, VkDescriptorSet set) { descriptorSets.push_back({ pool, set }); }
     
 private:
     VkFence completed = VK_NULL_HANDLE;
@@ -34,6 +35,7 @@ private:
     bool has_completed = false;
     std::vector<std::unique_ptr<struct buffer>> stagingBuffers;
     std::vector<VkImageView> stagingImageViews;
+    std::vector<std::pair<VkDescriptorPool, VkDescriptorSet>> descriptorSets;
 };
 
 #endif

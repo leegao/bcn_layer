@@ -100,46 +100,6 @@ bool is_supported_bcn_format(struct device *device, VkFormat format) {
 	return is_rgtc(format) || is_s3tc(format) || is_bc6(format) || is_bc7(format);
 }
 
-static VkResult 
-create_new_pool(struct device *device) {
-	VkResult result;
-	VkLayerDispatchTable table = device->table;
-	
-	VkDescriptorPoolSize desc_sizes[] = 
-	{
-		{
-	        .type = (device->use_image_view) ? VK_DESCRIPTOR_TYPE_STORAGE_IMAGE : VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-	        .descriptorCount = 1
-	    },
-	    {
-	    	.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-	    	.descriptorCount = 1
-	    }
-	};
-	
-	VkDescriptorPoolCreateInfo descpool_info = {
-		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
-	    .pNext = nullptr,
-	    .flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT,
-	    .maxSets = 32,
-	    .poolSizeCount = 2,
-	    .pPoolSizes = desc_sizes
-	};
-	
-	VkDescriptorPool descriptorPool;
-	result = table.CreateDescriptorPool(device->handle,
-		&descpool_info, NULL, &descriptorPool);
-
-	if (result != VK_SUCCESS) {
-		Logger::log("error", "Failed to create descriptor pool, res %d", result);
-		return result;
-	}
-
-	device->pools.push_back(descriptorPool);
-
-	return VK_SUCCESS;
-}
-
 VkResult
 create_bcn_compute_pipelines(struct device *dev)
 {
@@ -342,13 +302,6 @@ create_bcn_compute_pipelines(struct device *dev)
 	table.DestroyShaderModule(device, bc6ShaderModule, nullptr);
 	table.DestroyShaderModule(device, bc7ShaderModule, nullptr);
 	table.DestroyShaderModule(device, rgtcShaderModule, nullptr);
-
-	result = create_new_pool(dev);
-
-	if (result != VK_SUCCESS) {
-	    Logger::log("error", "Failed to create descriptor pool, res %d", result);
-		return result;
-	}
 	
 	return VK_SUCCESS;
 }
@@ -396,34 +349,14 @@ decompress_bcn_compute(struct device *dev,
 		.offsetY = offsetY
 	};
 
+	VkDescriptorPool pool;
 	VkDescriptorSet descriptorSet;
-	VkDescriptorSetAllocateInfo desc_alloc_info = {
-		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-		.pNext = nullptr,
-		.descriptorPool = dev->pools.back(),
-		.descriptorSetCount = 1,
-		.pSetLayouts = &dev->setLayout
-	};
-
-	result = table.AllocateDescriptorSets(device,
-		&desc_alloc_info, &descriptorSet);
-
-	// TODO: redesign this to reuse descriptors, since we're basically just using up
-	// unlimited number of them right now (on many drivers, you'll also get
-	// fragmented pools after 3-4 dispatches)
-	if (result == VK_ERROR_OUT_OF_POOL_MEMORY || result == VK_ERROR_FRAGMENTED_POOL) {
-		create_new_pool(dev);
-
-		desc_alloc_info.descriptorPool = dev->pools.back();
-
-		result = table.AllocateDescriptorSets(device,
-			&desc_alloc_info, &descriptorSet);
-	}
-
+	result = dev->descriptorSetAllocator->allocate(dev->setLayout, &pool, &descriptorSet);
 	if (result != VK_SUCCESS) {
 	    Logger::log("error", "Failed to allocate descriptor set: %d", result);
 		return result;
 	}
+	cb->currentStagingResources->AddDescriptorSet(pool, descriptorSet);
 
 	VkWriteDescriptorSet desc_writes[2];
 	

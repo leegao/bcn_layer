@@ -2,6 +2,7 @@
 #include "bcn.hpp"
 #include "vulkan/vk_layer.h"
 
+#include <memory>
 #include <unistd.h>
 #include <cmath>
 #include <utility>
@@ -64,6 +65,80 @@ std::pair<VkSemaphore, VkFence> SyncPool::Acquire() {
         dev->table.CreateSemaphore(device, &info, nullptr, &sem);
     }
     return {sem, fence};
+}
+
+void DescriptorSetAllocator::cleanup() {
+    if (activePool != VK_NULL_HANDLE) {
+        device->table.DestroyDescriptorPool(device->handle, activePool, nullptr);
+        activePool = VK_NULL_HANDLE;
+    }
+    for (auto pool : exhaustedPools) {
+        device->table.DestroyDescriptorPool(device->handle, pool, nullptr);
+    }
+    exhaustedPools.clear();
+}
+
+VkResult DescriptorSetAllocator::allocate(VkDescriptorSetLayout layout, VkDescriptorPool* pool, VkDescriptorSet* descriptors) {
+    // Both the Free/AllocateDescriptorSets and access to active/exhausted pools must be synchronized
+    scoped_lock l(lock);
+    VkDescriptorSetAllocateInfo alloc_info {
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+        .descriptorPool = activePool,
+        .descriptorSetCount = 1,
+        .pSetLayouts = &layout,
+    };
+
+    VkResult result = device->table.AllocateDescriptorSets(device->handle, &alloc_info, descriptors);
+    VkDescriptorPool initial_pool = alloc_info.descriptorPool;
+
+    // Check through all the previously exhausted pools to see if one of them has capacity
+    while (result == VK_ERROR_OUT_OF_POOL_MEMORY || result == VK_ERROR_FRAGMENTED_POOL) {
+        exhaustedPools.push_back(activePool);
+        activePool = exhaustedPools.front();
+        exhaustedPools.erase(exhaustedPools.begin());
+        if (activePool == initial_pool) {
+            // we've looped back to the initial pool, time to allocate a new one
+            break;
+        }
+        alloc_info.descriptorPool = activePool;
+        result = device->table.AllocateDescriptorSets(device->handle, &alloc_info, descriptors);
+    }
+
+    // None of the pools have capacity, allocate a new one
+    if (result == VK_ERROR_OUT_OF_POOL_MEMORY || result == VK_ERROR_FRAGMENTED_POOL) {
+        result = createNewPool(&alloc_info.descriptorPool);
+        if (result != VK_SUCCESS) {
+            return result;
+        }
+        exhaustedPools.push_back(activePool);
+        activePool = alloc_info.descriptorPool;
+        result = device->table.AllocateDescriptorSets(device->handle, &alloc_info, descriptors);
+    }
+    ++allocated_count;
+    *pool = alloc_info.descriptorPool;
+    return result;
+}
+
+void DescriptorSetAllocator::free(VkDescriptorPool pool, VkDescriptorSet descriptors) {
+    scoped_lock l(lock);
+    --allocated_count;
+    device->table.FreeDescriptorSets(device->handle, pool, 1, &descriptors);
+}
+
+VkResult DescriptorSetAllocator::createNewPool(VkDescriptorPool* descriptor_pool) {
+    VkDescriptorPoolCreateInfo pool_info{
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+        .flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT,
+        .maxSets = poolSizes.maxSets,
+        .poolSizeCount = static_cast<uint32_t>(poolSizes.sizes.size()),
+        .pPoolSizes = poolSizes.sizes.data(),
+    };
+
+    auto result = device->table.CreateDescriptorPool(device->handle, &pool_info, nullptr, descriptor_pool);
+    if (result != VK_SUCCESS) {
+        Logger::log("error", "Failed to allocate new descriptor pool: %d", result);
+    }
+    return result;
 }
 
 VK_LAYER_EXPORT VkResult VKAPI_CALL
@@ -522,6 +597,7 @@ BCnLayer_CreateDevice(VkPhysicalDevice physicalDevice,
     table.CmdPipelineBarrier = (PFN_vkCmdPipelineBarrier)gdpa(*pDevice, "vkCmdPipelineBarrier");
     table.DestroyDescriptorPool = (PFN_vkDestroyDescriptorPool)gdpa(*pDevice, "vkDestroyDescriptorPool");
     table.DestroyDescriptorSetLayout = (PFN_vkDestroyDescriptorSetLayout)gdpa(*pDevice, "vkDestroyDescriptorSetLayout");
+    table.FreeDescriptorSets = (PFN_vkFreeDescriptorSets)gdpa(*pDevice, "vkFreeDescriptorSets");
     table.DestroyPipelineLayout = (PFN_vkDestroyPipelineLayout)gdpa(*pDevice, "vkDestroyPipelineLayout");
     table.DestroyPipeline = (PFN_vkDestroyPipeline)gdpa(*pDevice, "vkDestroyPipeline");
     table.DestroyShaderModule = (PFN_vkDestroyShaderModule)gdpa(*pDevice, "vkDestroyShaderModule");
@@ -567,6 +643,24 @@ BCnLayer_CreateDevice(VkPhysicalDevice physicalDevice,
     }
 
     device->syncPool = std::make_unique<SyncPool>(device->handle);
+
+    const DescriptorSetAllocator::PoolSizes default_pool_sizes {
+        .sizes = {
+            {
+                .type = (device->use_image_view) ? VK_DESCRIPTOR_TYPE_STORAGE_IMAGE 
+                                                 : VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                .descriptorCount = 256
+            },
+            {
+                .type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                .descriptorCount = 256
+            }
+        },
+        .maxSets = 256,
+    };
+    device->descriptorSetAllocator = std::make_unique<DescriptorSetAllocator>(
+        device.get(), default_pool_sizes);
+
     device->stop_thread = false;
     device->finalizer_thread = std::thread(FinalizerThread, device.get());
 
@@ -598,10 +692,6 @@ BCnLayer_DestroyDevice(VkDevice device,
     }
 
     scoped_lock l(global_lock);
-	for (const auto& pool : dev->pools)
-		dev->table.DestroyDescriptorPool(device, pool, nullptr);
-			
-	dev->pools.clear();
 	dev->table.DestroyDescriptorSetLayout(device, dev->setLayout, nullptr);
 	dev->table.DestroyPipelineLayout(device, dev->layout, nullptr);
 	dev->table.DestroyPipeline(device, dev->s3tcPipeline, nullptr);
@@ -613,6 +703,8 @@ BCnLayer_DestroyDevice(VkDevice device,
 	}
 	dev->stagingResourcesQueue.clear();
 	dev->syncPool.reset();
+	dev->descriptorSetAllocator->cleanup();
+	dev->descriptorSetAllocator.reset();
 	if (device != VK_NULL_HANDLE)
 		dev->table.DestroyDevice(device, pAllocator);
 				

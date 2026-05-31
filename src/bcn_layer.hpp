@@ -6,6 +6,7 @@
 #include "logger.hpp"
 #include "staging_resources.hpp"
 
+#include <cstdint>
 #include <vulkan/vulkan.h>
 #include <atomic>
 #include <unistd.h>
@@ -57,6 +58,33 @@ private:
     std::vector<VkSemaphore> freeSemaphores;
 };
 
+class DescriptorSetAllocator {
+public:
+    struct PoolSizes {
+        std::vector<VkDescriptorPoolSize> sizes;
+        uint32_t maxSets = 100;
+    };
+
+    explicit DescriptorSetAllocator(struct device* device, const PoolSizes& defaultSizes) 
+        : device(device), 
+          poolSizes(defaultSizes) { createNewPool(&activePool); }
+    ~DescriptorSetAllocator() { cleanup(); }
+
+    void cleanup();
+    VkResult allocate(VkDescriptorSetLayout layout, VkDescriptorPool* pool, VkDescriptorSet* descriptors);
+    void free(VkDescriptorPool pool, VkDescriptorSet descriptors);
+    uint64_t allocatedCount() const { return allocated_count; }
+private:
+    VkResult createNewPool(VkDescriptorPool* descriptor_pool);
+
+    struct device* device = nullptr;
+    VkDescriptorPool activePool = VK_NULL_HANDLE;
+    std::vector<VkDescriptorPool> exhaustedPools;
+    PoolSizes poolSizes;
+    std::mutex lock;
+    std::atomic_uint64_t allocated_count = 0;
+};
+
 struct device {
 	VkDevice handle;
 	VkPhysicalDevice physical;
@@ -74,9 +102,9 @@ struct device {
 	uint32_t memoryIndex;
 	int use_image_view;
 	VkDescriptorSetLayout setLayout;
-	std::vector<VkDescriptorPool> pools;
 	const VkAllocationCallbacks *alloc;
 	std::unique_ptr<SyncPool> syncPool;
+	std::unique_ptr<DescriptorSetAllocator> descriptorSetAllocator;
 	std::vector<std::unique_ptr<StagingResources>> stagingResourcesQueue;
 	std::condition_variable hasCleanupWork;
 	std::thread finalizer_thread;

@@ -79,6 +79,11 @@ void StagingResources::Cleanup() {
         dev->table.DestroyImageView(device, *it, dev->alloc);
         it = stagingImageViews.erase(it);
     }
+
+    for (auto it = descriptorSets.begin(); it != descriptorSets.end();) {
+        dev->descriptorSetAllocator->free(it->first, it->second);
+        it = descriptorSets.erase(it);
+    }
 }
 
 StagingResources::~StagingResources() {
