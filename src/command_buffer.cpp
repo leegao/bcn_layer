@@ -101,14 +101,14 @@ BCnLayer_CmdCopyBufferToImage(VkCommandBuffer commandBuffer,
 	
 	for (uint32_t i = 0; i < regionCount; i++) {
 		VkBufferImageCopy copy_region = pRegions[i];
-
-		if (dev->use_image_view) {
+		// UE4 games frequently use 3D textures, which we don't support in the iv shaders yet
+		if (dev->use_image_view && copy_region.imageExtent.depth == 1) {
 			decompress_bcn_compute(dev, commandBuffer, format, &copy_region, buf, nullptr, img, dstImageLayout);
-		}
-        else {
+		} else {
         	int w = copy_region.imageExtent.width;                                                         
         	int h = copy_region.imageExtent.height;
-        	int size = w * h *texel_size;
+            int d = copy_region.imageExtent.depth;
+        	int size = w * h * d * texel_size;
         	auto staging_buf = create_staging_buffer(dev, size);
 
         	decompress_bcn_compute(dev, commandBuffer, format, &copy_region, buf, staging_buf.get(), img, dstImageLayout);

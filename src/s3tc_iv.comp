@@ -28,7 +28,7 @@ layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 
 layout(set = 0, binding = 0) uniform writeonly image2D uOutput;
 layout(set = 0, binding = 1) readonly buffer uInputBlock {
-	uint[] data;
+    uint[] data;
 } uInput;
 
 layout(push_constant) uniform Registers
@@ -36,8 +36,10 @@ layout(push_constant) uniform Registers
     int format;
     int width;
     int height;
+    int depth;
     int offset;
     int bufferRowLength;
+    int bufferImageHeight;
     int offsetX;
     int offsetY;
 } registers;
@@ -109,34 +111,34 @@ float decode_alpha_4bit(uvec2 payload, int pixel)
 
 void main()
 {
-	int format = registers.format;
-	int width = registers.width;
-	int height = registers.height;
-	int offset = registers.offset;
-	int bufferRowLength = registers.bufferRowLength;
-	int offsetX = registers.offsetX;
-	int offsetY = registers.offsetY;
-	
-	ivec2 resolution = ivec2(width, height);
+    int format = registers.format;
+    int width = registers.width;
+    int height = registers.height;
+    int offset = registers.offset;
+    int bufferRowLength = registers.bufferRowLength;
+    int offsetX = registers.offsetX;
+    int offsetY = registers.offsetY;
 
-	int x = int(gl_WorkGroupID.x * 8 + gl_LocalInvocationID.x);
-	int y = int(gl_WorkGroupID.y * 8 + gl_LocalInvocationID.y);
+    ivec2 resolution = ivec2(width, height);
 
-	ivec2 coord = ivec2(x, y);
-    
+    int x = int(gl_WorkGroupID.x * 8 + gl_LocalInvocationID.x);
+    int y = int(gl_WorkGroupID.y * 8 + gl_LocalInvocationID.y);
+
+    ivec2 coord = ivec2(x, y);
+
     if (any(greaterThanEqual(coord, resolution)))
         return;
-    
+
     ivec2 tile_coord = coord / 4;
     ivec2 pixel_coord = coord % 4;
     int linear_pixel = 4 * pixel_coord.y + pixel_coord.x;
 
-	int rowExtent = max(width, bufferRowLength);
+    int rowExtent = max(width, bufferRowLength);
     int blocksPerRow = (rowExtent + 3) / 4;
     int blockIndex = tile_coord.y * blocksPerRow + tile_coord.x;
-    int bcWords  = (format < VK_FORMAT_BC2_UNORM_BLOCK) ? 2 : 4;
+    int bcWords = (format < VK_FORMAT_BC2_UNORM_BLOCK) ? 2 : 4;
     int blockWordOffset = blockIndex * bcWords;
-    
+
     uvec4 payload;
     payload.x = uInput.data[blockWordOffset + 0];
     payload.y = uInput.data[blockWordOffset + 1];
@@ -149,33 +151,33 @@ void main()
     vec4 decoded;
 
     if (format >= VK_FORMAT_BC1_RGB_UNORM_BLOCK && format <= VK_FORMAT_BC1_RGBA_SRGB_BLOCK) {
-    	color_payload = payload.xy;
-    	opaque_mode = decode_endpoints_color(format, color_payload.x, ep0, ep1);
-    	decoded = interpolate_endpoint_color(ep0, ep1, int((color_payload.y >> (2 * linear_pixel)) & 3), opaque_mode);
-    	if (format == VK_FORMAT_BC1_RGB_UNORM_BLOCK || format == VK_FORMAT_BC1_RGB_SRGB_BLOCK)
-    		decoded.a = 1;
+        color_payload = payload.xy;
+        opaque_mode = decode_endpoints_color(format, color_payload.x, ep0, ep1);
+        decoded = interpolate_endpoint_color(ep0, ep1, int((color_payload.y >> (2 * linear_pixel)) & 3), opaque_mode);
+        if (format == VK_FORMAT_BC1_RGB_UNORM_BLOCK || format == VK_FORMAT_BC1_RGB_SRGB_BLOCK)
+            decoded.a = 1;
     }
     else if (format >= VK_FORMAT_BC2_UNORM_BLOCK && format <= VK_FORMAT_BC2_SRGB_BLOCK) {
-    	color_payload = payload.zw;
-    	alpha_payload = payload.xy;
-    	opaque_mode = decode_endpoints_color(format, color_payload.x, ep0, ep1);
-    	decoded = interpolate_endpoint_color(ep0, ep1, int((color_payload.y >> (2 * linear_pixel)) & 3), opaque_mode);
-    	decoded.a = decode_alpha_4bit(alpha_payload, linear_pixel);
-   	}
-   	else {
-   		color_payload = payload.zw;
-   		alpha_payload = payload.xy;
-   		opaque_mode = decode_endpoints_color(format, color_payload.x, ep0, ep1);
-   		decoded = interpolate_endpoint_color(ep0, ep1, int((color_payload.y >> (2 * linear_pixel)) & 3), opaque_mode);
-   		decoded.a = decode_alpha_rgtc(alpha_payload, linear_pixel);
-   	}
+        color_payload = payload.zw;
+        alpha_payload = payload.xy;
+        opaque_mode = decode_endpoints_color(format, color_payload.x, ep0, ep1);
+        decoded = interpolate_endpoint_color(ep0, ep1, int((color_payload.y >> (2 * linear_pixel)) & 3), opaque_mode);
+        decoded.a = decode_alpha_4bit(alpha_payload, linear_pixel);
+    }
+    else {
+        color_payload = payload.zw;
+        alpha_payload = payload.xy;
+        opaque_mode = decode_endpoints_color(format, color_payload.x, ep0, ep1);
+        decoded = interpolate_endpoint_color(ep0, ep1, int((color_payload.y >> (2 * linear_pixel)) & 3), opaque_mode);
+        decoded.a = decode_alpha_rgtc(alpha_payload, linear_pixel);
+    }
 
-   	bool is_srgb = (format == VK_FORMAT_BC1_RGB_SRGB_BLOCK ||
-   	                format == VK_FORMAT_BC1_RGBA_SRGB_BLOCK ||
-   	                format == VK_FORMAT_BC2_SRGB_BLOCK ||
-   	                format == VK_FORMAT_BC3_SRGB_BLOCK);
-   	if (is_srgb)
-   		decoded = vec4(srgbDecode(decoded.rgb), decoded.a);
+    bool is_srgb = (format == VK_FORMAT_BC1_RGB_SRGB_BLOCK ||
+            format == VK_FORMAT_BC1_RGBA_SRGB_BLOCK ||
+            format == VK_FORMAT_BC2_SRGB_BLOCK ||
+            format == VK_FORMAT_BC3_SRGB_BLOCK);
+    if (is_srgb)
+        decoded = vec4(srgbDecode(decoded.rgb), decoded.a);
 
     ivec2 final_dst_pixel = ivec2(offsetX, offsetY) + coord;
     imageStore(uOutput, final_dst_pixel, decoded);

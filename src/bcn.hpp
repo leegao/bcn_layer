@@ -7,8 +7,10 @@ struct push_constants {
 	int format;
 	int width;
 	int height;
+	int depth;
 	int offset;	
 	int bufferRowLength;
+	int bufferImageHeight;
 	int offsetX;
 	int offsetY;
 	int use_image_view;
@@ -31,4 +33,3 @@ VkResult decompress_bcn_compute(struct device *dev,
                        			VkImageLayout dstImageLayout);
 
 #endif
-

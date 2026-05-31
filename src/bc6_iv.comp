@@ -30,18 +30,20 @@ layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 
 layout(set = 0, binding = 0, rgba16f) writeonly uniform image2D uOutput;
 layout(set = 0, binding = 1) readonly buffer uInputBlock {
-	uint data[];
+    uint data[];
 } uInput;
 
 layout(push_constant) uniform Registers
 {
-	int format;
-	int width;
-	int height;
-	int offset;
-	int bufferRowLength;
-	int offsetX;
-	int offsetY;
+    int format;
+    int width;
+    int height;
+    int depth;
+    int offset;
+    int bufferRowLength;
+    int bufferImageHeight;
+    int offsetX;
+    int offsetY;
 } registers;
 
 const int weight_table3[8] = int[](0, 9, 18, 27, 37, 46, 55, 64);
@@ -55,47 +57,47 @@ bool is_signed = false;
     ((m) << 12) | ((n) << 13) | ((o) << 14) | ((p) << 15))
 
 const int partition_table2[32] = int[](
-    P2(0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1),
-    P2(0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1),
-    P2(0, 1, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1),
-    P2(0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 1, 1, 1),
-    P2(0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1, 1),
-    P2(0, 0, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1),
-    P2(0, 0, 0, 1, 0, 0, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1),
-    P2(0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 1, 0, 1, 1, 1),
+        P2(0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1),
+        P2(0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1),
+        P2(0, 1, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1),
+        P2(0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 1, 1, 1),
+        P2(0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1, 1),
+        P2(0, 0, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1),
+        P2(0, 0, 0, 1, 0, 0, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1),
+        P2(0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 1, 0, 1, 1, 1),
 
-    P2(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 1),
-    P2(0, 0, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
-    P2(0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 1, 1, 1, 1, 1, 1),
-    P2(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 1, 1),
-    P2(0, 0, 0, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
-    P2(0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1),
-    P2(0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
-    P2(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1),
+        P2(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 1),
+        P2(0, 0, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
+        P2(0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 1, 1, 1, 1, 1, 1),
+        P2(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 1, 1),
+        P2(0, 0, 0, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
+        P2(0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1),
+        P2(0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
+        P2(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1),
 
-    P2(0, 0, 0, 0, 1, 0, 0, 0, 1, 1, 1, 0, 1, 1, 1, 1),
-    P2(0, 1, 1, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0),
-    P2(0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 1, 1, 0),
-    P2(0, 1, 1, 1, 0, 0, 1, 1, 0, 0, 0, 1, 0, 0, 0, 0),
-    P2(0, 0, 1, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0),
-    P2(0, 0, 0, 0, 1, 0, 0, 0, 1, 1, 0, 0, 1, 1, 1, 0),
-    P2(0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 1, 0, 0),
-    P2(0, 1, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 0, 1),
+        P2(0, 0, 0, 0, 1, 0, 0, 0, 1, 1, 1, 0, 1, 1, 1, 1),
+        P2(0, 1, 1, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0),
+        P2(0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 1, 1, 0),
+        P2(0, 1, 1, 1, 0, 0, 1, 1, 0, 0, 0, 1, 0, 0, 0, 0),
+        P2(0, 0, 1, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0),
+        P2(0, 0, 0, 0, 1, 0, 0, 0, 1, 1, 0, 0, 1, 1, 1, 0),
+        P2(0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 1, 0, 0),
+        P2(0, 1, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 0, 1),
 
-    P2(0, 0, 1, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0),
-    P2(0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 1, 0, 0),
-    P2(0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0),
-    P2(0, 0, 1, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 1, 0, 0),
-    P2(0, 0, 0, 1, 0, 1, 1, 1, 1, 1, 1, 0, 1, 0, 0, 0),
-    P2(0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0),
-    P2(0, 1, 1, 1, 0, 0, 0, 1, 1, 0, 0, 0, 1, 1, 1, 0),
-    P2(0, 0, 1, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 1, 0, 0));
+        P2(0, 0, 1, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0),
+        P2(0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 1, 0, 0),
+        P2(0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0),
+        P2(0, 0, 1, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 1, 0, 0),
+        P2(0, 0, 0, 1, 0, 1, 1, 1, 1, 1, 1, 0, 1, 0, 0, 0),
+        P2(0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0),
+        P2(0, 1, 1, 1, 0, 0, 0, 1, 1, 0, 0, 0, 1, 1, 1, 0),
+        P2(0, 0, 1, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 1, 0, 0));
 
 const int anchor_table2[32] = int[](
-    15, 15, 15, 15, 15, 15, 15, 15,
-    15, 15, 15, 15, 15, 15, 15, 15,
-    15, 2, 8, 2, 2, 8, 8, 15,
-    2, 8, 2, 2, 8, 8, 2, 2);
+        15, 15, 15, 15, 15, 15, 15, 15,
+        15, 15, 15, 15, 15, 15, 15, 15,
+        15, 2, 8, 2, 2, 8, 8, 15,
+        2, 8, 2, 2, 8, 8, 2, 2);
 
 struct DecodedInterpolation
 {
@@ -177,9 +179,9 @@ DecodedInterpolation decode_bc6_mode0(uvec4 payload, int linear_pixel, int part,
     ep1 = unquantize_endpoint(ep1, 10);
 
     int index = extract_bits(
-        payload,
-        max(81 + linear_pixel * 3 - int(linear_pixel > anchor_pixel), 82),
-        (linear_pixel == 0 || linear_pixel == anchor_pixel) ? 2 : 3);
+            payload,
+            max(81 + linear_pixel * 3 - int(linear_pixel > anchor_pixel), 82),
+            (linear_pixel == 0 || linear_pixel == anchor_pixel) ? 2 : 3);
 
     int w = weight_table3[index];
     return DecodedInterpolation(ep0, ep1, w);
@@ -220,9 +222,9 @@ DecodedInterpolation decode_bc6_mode1(uvec4 payload, int linear_pixel, int part,
     ep1 = unquantize_endpoint(ep1, 7);
 
     int index = extract_bits(
-        payload,
-        max(81 + linear_pixel * 3 - int(linear_pixel > anchor_pixel), 82),
-        (linear_pixel == 0 || linear_pixel == anchor_pixel) ? 2 : 3);
+            payload,
+            max(81 + linear_pixel * 3 - int(linear_pixel > anchor_pixel), 82),
+            (linear_pixel == 0 || linear_pixel == anchor_pixel) ? 2 : 3);
 
     int w = weight_table3[index];
     return DecodedInterpolation(ep0, ep1, w);
@@ -263,9 +265,9 @@ DecodedInterpolation decode_bc6_mode2(uvec4 payload, int linear_pixel, int part,
     ep1 = unquantize_endpoint(ep1, 11);
 
     int index = extract_bits(
-        payload,
-        max(81 + linear_pixel * 3 - int(linear_pixel > anchor_pixel), 82),
-        (linear_pixel == 0 || linear_pixel == anchor_pixel) ? 2 : 3);
+            payload,
+            max(81 + linear_pixel * 3 - int(linear_pixel > anchor_pixel), 82),
+            (linear_pixel == 0 || linear_pixel == anchor_pixel) ? 2 : 3);
 
     int w = weight_table3[index];
     return DecodedInterpolation(ep0, ep1, w);
@@ -286,9 +288,9 @@ DecodedInterpolation decode_bc6_mode3(uvec4 payload, int linear_pixel)
     ep1 = unquantize_endpoint(ep1, 10);
 
     int index = extract_bits(
-        payload,
-        max(64 + linear_pixel * 4, 65),
-        linear_pixel == 0 ? 3 : 4);
+            payload,
+            max(64 + linear_pixel * 4, 65),
+            linear_pixel == 0 ? 3 : 4);
 
     int w = weight_table4[index];
     return DecodedInterpolation(ep0, ep1, w);
@@ -329,9 +331,9 @@ DecodedInterpolation decode_bc6_mode6(uvec4 payload, int linear_pixel, int part,
     ep1 = unquantize_endpoint(ep1, 11);
 
     int index = extract_bits(
-        payload,
-        max(81 + linear_pixel * 3 - int(linear_pixel > anchor_pixel), 82),
-        (linear_pixel == 0 || linear_pixel == anchor_pixel) ? 2 : 3);
+            payload,
+            max(81 + linear_pixel * 3 - int(linear_pixel > anchor_pixel), 82),
+            (linear_pixel == 0 || linear_pixel == anchor_pixel) ? 2 : 3);
 
     int w = weight_table3[index];
     return DecodedInterpolation(ep0, ep1, w);
@@ -357,9 +359,9 @@ DecodedInterpolation decode_bc6_mode7(uvec4 payload, int linear_pixel)
     ep1 = unquantize_endpoint(ep1, 11);
 
     int index = extract_bits(
-        payload,
-        max(64 + linear_pixel * 4, 65),
-        linear_pixel == 0 ? 3 : 4);
+            payload,
+            max(64 + linear_pixel * 4, 65),
+            linear_pixel == 0 ? 3 : 4);
 
     int w = weight_table4[index];
     return DecodedInterpolation(ep0, ep1, w);
@@ -400,9 +402,9 @@ DecodedInterpolation decode_bc6_mode10(uvec4 payload, int linear_pixel, int part
     ep1 = unquantize_endpoint(ep1, 11);
 
     int index = extract_bits(
-        payload,
-        max(81 + linear_pixel * 3 - int(linear_pixel > anchor_pixel), 82),
-        (linear_pixel == 0 || linear_pixel == anchor_pixel) ? 2 : 3);
+            payload,
+            max(81 + linear_pixel * 3 - int(linear_pixel > anchor_pixel), 82),
+            (linear_pixel == 0 || linear_pixel == anchor_pixel) ? 2 : 3);
 
     int w = weight_table3[index];
     return DecodedInterpolation(ep0, ep1, w);
@@ -428,9 +430,9 @@ DecodedInterpolation decode_bc6_mode11(uvec4 payload, int linear_pixel)
     ep1 = unquantize_endpoint(ep1, 12);
 
     int index = extract_bits(
-        payload,
-        max(64 + linear_pixel * 4, 65),
-        linear_pixel == 0 ? 3 : 4);
+            payload,
+            max(64 + linear_pixel * 4, 65),
+            linear_pixel == 0 ? 3 : 4);
 
     int w = weight_table4[index];
     return DecodedInterpolation(ep0, ep1, w);
@@ -472,9 +474,9 @@ DecodedInterpolation decode_bc6_mode14(uvec4 payload, int linear_pixel, int part
     ep1 = unquantize_endpoint(ep1, 9);
 
     int index = extract_bits(
-        payload,
-        max(81 + linear_pixel * 3 - int(linear_pixel > anchor_pixel), 82),
-        (linear_pixel == 0 || linear_pixel == anchor_pixel) ? 2 : 3);
+            payload,
+            max(81 + linear_pixel * 3 - int(linear_pixel > anchor_pixel), 82),
+            (linear_pixel == 0 || linear_pixel == anchor_pixel) ? 2 : 3);
 
     int w = weight_table3[index];
     return DecodedInterpolation(ep0, ep1, w);
@@ -500,9 +502,9 @@ DecodedInterpolation decode_bc6_mode15(uvec4 payload, int linear_pixel)
     ep1 = unquantize_endpoint(ep1, 16);
 
     int index = extract_bits(
-        payload,
-        max(64 + linear_pixel * 4, 65),
-        linear_pixel == 0 ? 3 : 4);
+            payload,
+            max(64 + linear_pixel * 4, 65),
+            linear_pixel == 0 ? 3 : 4);
 
     int w = weight_table4[index];
     return DecodedInterpolation(ep0, ep1, w);
@@ -543,9 +545,9 @@ DecodedInterpolation decode_bc6_mode18(uvec4 payload, int linear_pixel, int part
     ep1 = unquantize_endpoint(ep1, 8);
 
     int index = extract_bits(
-        payload,
-        max(81 + linear_pixel * 3 - int(linear_pixel > anchor_pixel), 82),
-        (linear_pixel == 0 || linear_pixel == anchor_pixel) ? 2 : 3);
+            payload,
+            max(81 + linear_pixel * 3 - int(linear_pixel > anchor_pixel), 82),
+            (linear_pixel == 0 || linear_pixel == anchor_pixel) ? 2 : 3);
 
     int w = weight_table3[index];
     return DecodedInterpolation(ep0, ep1, w);
@@ -587,9 +589,9 @@ DecodedInterpolation decode_bc6_mode22(uvec4 payload, int linear_pixel, int part
     ep1 = unquantize_endpoint(ep1, 8);
 
     int index = extract_bits(
-        payload,
-        max(81 + linear_pixel * 3 - int(linear_pixel > anchor_pixel), 82),
-        (linear_pixel == 0 || linear_pixel == anchor_pixel) ? 2 : 3);
+            payload,
+            max(81 + linear_pixel * 3 - int(linear_pixel > anchor_pixel), 82),
+            (linear_pixel == 0 || linear_pixel == anchor_pixel) ? 2 : 3);
 
     int w = weight_table3[index];
     return DecodedInterpolation(ep0, ep1, w);
@@ -631,9 +633,9 @@ DecodedInterpolation decode_bc6_mode26(uvec4 payload, int linear_pixel, int part
     ep1 = unquantize_endpoint(ep1, 8);
 
     int index = extract_bits(
-        payload,
-        max(81 + linear_pixel * 3 - int(linear_pixel > anchor_pixel), 82),
-        (linear_pixel == 0 || linear_pixel == anchor_pixel) ? 2 : 3);
+            payload,
+            max(81 + linear_pixel * 3 - int(linear_pixel > anchor_pixel), 82),
+            (linear_pixel == 0 || linear_pixel == anchor_pixel) ? 2 : 3);
 
     int w = weight_table3[index];
     return DecodedInterpolation(ep0, ep1, w);
@@ -652,7 +654,7 @@ DecodedInterpolation decode_bc6_mode30(uvec4 payload, int linear_pixel, int part
         int r3 = extract_bits(payload, 71, 6);
         int g3 = extract_bits(payload, 51, 4) | (extract_bits(payload, 11, 1) << 4) | (extract_bits(payload, 31, 1) << 5);
         int b3 = extract_bits(payload, 12, 2) | (extract_bits(payload, 23, 1) << 2) |
-            (extract_bits(payload, 32, 1) << 3) | (extract_bits(payload, 34, 1) << 4) | (extract_bits(payload, 33, 1) << 5);
+                (extract_bits(payload, 32, 1) << 3) | (extract_bits(payload, 34, 1) << 4) | (extract_bits(payload, 33, 1) << 5);
 
         ep0 = ivec3(r2, g2, b2);
         ep1 = ivec3(r3, g3, b3);
@@ -675,20 +677,20 @@ DecodedInterpolation decode_bc6_mode30(uvec4 payload, int linear_pixel, int part
     ep1 = unquantize_endpoint(ep1, 6);
 
     int index = extract_bits(
-        payload,
-        max(81 + linear_pixel * 3 - int(linear_pixel > anchor_pixel), 82),
-        (linear_pixel == 0 || linear_pixel == anchor_pixel) ? 2 : 3);
+            payload,
+            max(81 + linear_pixel * 3 - int(linear_pixel > anchor_pixel), 82),
+            (linear_pixel == 0 || linear_pixel == anchor_pixel) ? 2 : 3);
 
     int w = weight_table3[index];
     return DecodedInterpolation(ep0, ep1, w);
 }
 
 float half_to_float(uint color) {
-	uint packed = color & 0xFFFFu;
-	return unpackHalf2x16(packed).x;
+    uint packed = color & 0xFFFFu;
+    return unpackHalf2x16(packed).x;
 }
 
-void main(){
+void main() {
     int format = registers.format;
     int width = registers.width;
     int height = registers.height;
@@ -697,27 +699,27 @@ void main(){
     int offsetX = registers.offsetX;
     int offsetY = registers.offsetY;
     ivec2 resolution = ivec2(width, height);
-    
+
     int x = int(gl_WorkGroupID.x * 8 + gl_LocalInvocationID.x);
     int y = int(gl_WorkGroupID.y * 8 + gl_LocalInvocationID.y);
     ivec2 coord = ivec2(x, y);
-    
+
     is_signed = (format == VK_FORMAT_BC6H_SFLOAT_BLOCK);
-    
+
     if (any(greaterThanEqual(coord, resolution)))
-    	return;
-    
+        return;
+
     ivec2 tile_coord = coord / 4;
     ivec2 pixel_coord = coord % 4;
-    
+
     int rowExtent = max(bufferRowLength, width);
     int blocks_per_row = (rowExtent + 3) / 4;
     int block_index = tile_coord.y * blocks_per_row + tile_coord.x;
     int block_offset = 4 * block_index;
     uvec4 payload = uvec4(uInput.data[block_offset],
-    					  uInput.data[block_offset + 1],
-    					  uInput.data[block_offset + 2],
-                          uInput.data[block_offset + 3]);
+            uInput.data[block_offset + 1],
+            uInput.data[block_offset + 2],
+            uInput.data[block_offset + 3]);
 
     int linear_pixel = 4 * pixel_coord.y + pixel_coord.x;
 
@@ -739,43 +741,43 @@ void main(){
     {
         switch (mode)
         {
-        case 2:
+            case 2:
             interp = decode_bc6_mode2(payload, linear_pixel, part, anchor_pixel);
             break;
-        case 3:
+            case 3:
             interp = decode_bc6_mode3(payload, linear_pixel);
             break;
-        case 6:
+            case 6:
             interp = decode_bc6_mode6(payload, linear_pixel, part, anchor_pixel);
             break;
-        case 7:
+            case 7:
             interp = decode_bc6_mode7(payload, linear_pixel);
             break;
-        case 10:
+            case 10:
             interp = decode_bc6_mode10(payload, linear_pixel, part, anchor_pixel);
             break;
-        case 11:
+            case 11:
             interp = decode_bc6_mode11(payload, linear_pixel);
             break;
-        case 14:
+            case 14:
             interp = decode_bc6_mode14(payload, linear_pixel, part, anchor_pixel);
             break;
-        case 15:
+            case 15:
             interp = decode_bc6_mode15(payload, linear_pixel);
             break;
-        case 18:
+            case 18:
             interp = decode_bc6_mode18(payload, linear_pixel, part, anchor_pixel);
             break;
-        case 22:
+            case 22:
             interp = decode_bc6_mode22(payload, linear_pixel, part, anchor_pixel);
             break;
-        case 26:
+            case 26:
             interp = decode_bc6_mode26(payload, linear_pixel, part, anchor_pixel);
             break;
-        case 30:
+            case 30:
             interp = decode_bc6_mode30(payload, linear_pixel, part, anchor_pixel);
             break;
-        default:
+            default:
             interp = DecodedInterpolation(ivec3(0), ivec3(0), 0);
             break;
         }
@@ -799,11 +801,11 @@ void main(){
     }
 
     vec4 outColor = vec4(
-    	half_to_float(uint(rgba_result.r) & 0xFFFFu),
-    	half_to_float(uint(rgba_result.g) & 0xFFFFu),
-    	half_to_float(uint(rgba_result.b) & 0xFFFFu),
-    	half_to_float(0x3C00u)
-    );
+            half_to_float(uint(rgba_result.r) & 0xFFFFu),
+            half_to_float(uint(rgba_result.g) & 0xFFFFu),
+            half_to_float(uint(rgba_result.b) & 0xFFFFu),
+            half_to_float(0x3C00u)
+        );
 
     ivec2 final_dst_pixel = ivec2(offsetX, offsetY) + coord;
     imageStore(uOutput, final_dst_pixel, outColor);

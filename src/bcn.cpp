@@ -333,18 +333,22 @@ decompress_bcn_compute(struct device *dev,
 
 	int width = copy_region->imageExtent.width;
 	int height = copy_region->imageExtent.height;
+	int depth = copy_region->imageExtent.depth;
 	int offset = copy_region->bufferOffset;
 	int bufferRowLength = copy_region->bufferRowLength;
+	int bufferImageHeight = copy_region->bufferImageHeight;
 	int offsetX = copy_region->imageOffset.x;
 	int offsetY = copy_region->imageOffset.y;
-	int use_image_view = dev->use_image_view;
+	int use_image_view = dev->use_image_view && depth == 1;
 
 	struct push_constants constants = {
 		.format = format,
 		.width = width,
 		.height = height,
+		.depth = depth,
 		.offset = offset,
 		.bufferRowLength = bufferRowLength,
+		.bufferImageHeight = bufferImageHeight,
 		.offsetX = offsetX,
 		.offsetY = offsetY
 	};
@@ -498,7 +502,7 @@ decompress_bcn_compute(struct device *dev,
 		&descriptorSet, 0, nullptr);
 
 	table.CmdDispatch(commandbuffer,
-		(width + 7) / 8, (height + 7) / 8, 1);
+		(width + 7) / 8, (height + 7) / 8, depth);
 
 	if (use_image_view) {
 		VkImageMemoryBarrier second_barrier = {
