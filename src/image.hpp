@@ -9,6 +9,7 @@ struct image {
 	VkFormat format;
 	struct device *device;
 	const VkAllocationCallbacks *alloc;
+	bool transcode_to_etc2;
 };
 
 struct image *find_image(VkImage);

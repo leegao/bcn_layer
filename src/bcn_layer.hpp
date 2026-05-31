@@ -97,11 +97,16 @@ struct device {
 	VkPipeline rgtcPipeline;
 	VkPipeline bc6Pipeline;
 	VkPipeline bc7Pipeline;
+	VkPipeline etc2Pipeline;
 	VkPipelineLayout layout;
+	VkPipelineLayout etc2Layout;
 	VkQueue queue;
 	uint32_t memoryIndex;
-	int use_image_view;
+	int use_image_view = 0;
+	int transcode_to_etc1 = 0;
+	int transcode_to_etc2 = 0;
 	VkDescriptorSetLayout setLayout;
+	VkDescriptorSetLayout etc2SetLayout;
 	const VkAllocationCallbacks *alloc;
 	std::unique_ptr<SyncPool> syncPool;
 	std::unique_ptr<DescriptorSetAllocator> descriptorSetAllocator;

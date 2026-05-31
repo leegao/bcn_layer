@@ -10,6 +10,7 @@
 #include "bc7_iv_spv.h"
 #include "rgtc_spv.h"
 #include "rgtc_iv_spv.h"
+#include "etc2_encode_spv.h"
 
 bool is_s3tc(VkFormat format) {
 	switch (format) {
@@ -82,6 +83,10 @@ VkFormat get_format_for_bcn(VkFormat format) {
 	}
 }
 
+VkFormat get_format_for_bcn_to_etc2(struct device *device, VkFormat format) {
+	return VK_FORMAT_ETC2_R8G8B8A8_UNORM_BLOCK; // TODO: opportunistically use RGB8
+}
+
 bool is_supported_bcn_format(struct device *device, VkFormat format) {
     VkPhysicalDeviceProperties2 props2 = device->props2;
     VkPhysicalDeviceDriverProperties driverProps = device->driverProps;
@@ -143,10 +148,20 @@ create_bcn_compute_pipelines(struct device *dev)
 	    .pCode = (dev->use_image_view) ? (const uint32_t *)bc7_iv_spv : (const uint32_t *)bc7_spv
 	};
 
+	VkShaderModule etc2ShaderModule;
+	VkShaderModuleCreateInfo etc2_shader_info = {
+		.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+	    .pNext = nullptr,
+	    .flags = 0,
+	    .codeSize = etc2_encode_spv_len,
+	    .pCode = (const uint32_t *) etc2_encode_spv
+	};
+
 	table.CreateShaderModule(device, &s3tc_shader_info, nullptr, &s3tcShaderModule);
 	table.CreateShaderModule(device, &bc6_shader_info, nullptr, &bc6ShaderModule);
 	table.CreateShaderModule(device, &bc7_shader_info, nullptr, &bc7ShaderModule);
 	table.CreateShaderModule(device, &rgtc_shader_info, nullptr, &rgtcShaderModule);
+	table.CreateShaderModule(device, &etc2_shader_info, nullptr, &etc2ShaderModule);
 
 	VkPipelineShaderStageCreateInfo shader_stage_infos[] = {
 		{
@@ -184,7 +199,16 @@ create_bcn_compute_pipelines(struct device *dev)
 		    .module = bc7ShaderModule,
 		    .pName = "main",
 		    .pSpecializationInfo = nullptr
-		}
+		},
+		{
+		    .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+		    .pNext = nullptr,
+		    .flags = 0,
+		    .stage = VK_SHADER_STAGE_COMPUTE_BIT,
+		    .module = etc2ShaderModule,
+		    .pName = "main",
+		    .pSpecializationInfo = nullptr
+		},
 	};
 
 	VkDescriptorSetLayoutBinding bindings[] = {
@@ -220,6 +244,39 @@ create_bcn_compute_pipelines(struct device *dev)
 		return result;
 	}
 
+	VkDescriptorSetLayoutBinding etc2_bindings[] = {
+		{
+			.binding = 0,
+			.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+			.descriptorCount = 1,
+			.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
+			.pImmutableSamplers = nullptr
+		},
+		{
+			.binding = 1,
+			.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+			.descriptorCount = 1,
+			.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
+			.pImmutableSamplers = nullptr
+		}
+	};
+
+	VkDescriptorSetLayoutCreateInfo etc2_descriptor_set_create_info = {
+		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+		.pNext = nullptr,
+		.flags = 0,
+		.bindingCount = 2,
+		.pBindings = bindings
+	};
+
+	result = table.CreateDescriptorSetLayout(device,
+		&etc2_descriptor_set_create_info, NULL, &dev->etc2SetLayout);
+
+	if (result != VK_SUCCESS) {
+		Logger::log("error", "Failed to create descriptor set etc2SetLayout, res %d", result);
+		return result;
+	}
+
 	VkPushConstantRange push_constant = {
 		.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
 		.offset = 0,
@@ -240,7 +297,31 @@ create_bcn_compute_pipelines(struct device *dev)
 		&layout_create_info, NULL, &dev->layout);
 
 	if (result != VK_SUCCESS) {
-		Logger::log("error", "Failed to create pipeline layout");
+		Logger::log("error", "Failed to create pipeline layout: %d", result);
+		return result;
+	}
+
+	VkPushConstantRange etc2_push_constant = {
+		.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
+		.offset = 0,
+		.size = sizeof(struct etc2_push_constants)
+	};
+
+	VkPipelineLayoutCreateInfo etc2_layout_create_info = {
+		.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+		.pNext = nullptr,
+		.flags = 0,
+		.setLayoutCount = 1,
+		.pSetLayouts = &dev->etc2SetLayout,
+		.pushConstantRangeCount = 1,
+		.pPushConstantRanges = &etc2_push_constant
+	};
+
+	result = table.CreatePipelineLayout(device,
+		&etc2_layout_create_info, NULL, &dev->etc2Layout);
+
+	if (result != VK_SUCCESS) {
+		Logger::log("error", "Failed to create pipeline etc2Layout: %d", result);
 		return result;
 	}
 
@@ -280,13 +361,22 @@ create_bcn_compute_pipelines(struct device *dev)
 		    .layout = dev->layout,
 		    .basePipelineHandle = VK_NULL_HANDLE,
 		    .basePipelineIndex = -1
+		},
+		{
+		    .sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
+		    .pNext = nullptr,
+		    .flags = 0,
+		    .stage = shader_stage_infos[4],
+		    .layout = dev->etc2Layout,
+		    .basePipelineHandle = VK_NULL_HANDLE,
+		    .basePipelineIndex = -1
 		}
 	};
 
-	VkPipeline pipelines[4];
+	VkPipeline pipelines[5];
 
 	result = table.CreateComputePipelines(device,
-		VK_NULL_HANDLE, 4, pipeline_create_info, NULL, pipelines);
+		VK_NULL_HANDLE, 5, pipeline_create_info, NULL, pipelines);
 
 	if (result != VK_SUCCESS) {
 		Logger::log("error", "Failed to create compute pipeline, res %d", result);
@@ -297,12 +387,123 @@ create_bcn_compute_pipelines(struct device *dev)
 	dev->rgtcPipeline = pipelines[1];
 	dev->bc6Pipeline = pipelines[2];
 	dev->bc7Pipeline = pipelines[3];
+	dev->etc2Pipeline = pipelines[4];
 
 	table.DestroyShaderModule(device, s3tcShaderModule, nullptr);
 	table.DestroyShaderModule(device, bc6ShaderModule, nullptr);
 	table.DestroyShaderModule(device, bc7ShaderModule, nullptr);
 	table.DestroyShaderModule(device, rgtcShaderModule, nullptr);
-	
+	table.DestroyShaderModule(device, etc2ShaderModule, nullptr);
+
+	return VK_SUCCESS;
+}
+
+VkResult
+encode_etc2_compute(struct device *dev,
+	       		   struct command_buffer *cb,
+	       		   VkFormat format,
+	       		   VkBufferImageCopy *copy_region,
+	       		   struct buffer *decodedBuffer,
+	       		   struct buffer *stagingBuffer)
+{
+	VkResult result;
+	VkLayerDispatchTable table;
+	VkDevice device;
+
+	table = dev->table;
+	device = dev->handle;
+
+	auto commandbuffer = cb->handle;
+
+	uint width = copy_region->imageExtent.width;
+	uint height = copy_region->imageExtent.height;
+
+    uint32_t flags = dev->transcode_to_etc1 ? 0b00001 : 0b00000; // 0: etc2, 1: etc1
+    // if (target_format == VK_FORMAT_ETC2_R8G8B8_UNORM_BLOCK) {
+    //     flags |= 0b00100; // no alpha
+    // }
+    if (format == VK_FORMAT_BC6H_SFLOAT_BLOCK || format == VK_FORMAT_BC6H_UFLOAT_BLOCK) {
+        flags |= 0b01000; // translate sfloat16 to unorm8
+    }
+    if (format == VK_FORMAT_BC4_SNORM_BLOCK || format == VK_FORMAT_BC5_SNORM_BLOCK) {
+        flags |= 0b10000; // snorm8 to unorm8
+    }
+
+	struct etc2_push_constants constants = {
+		.width = width,
+		.height = height,
+		.flags = flags,
+	};
+
+	VkDescriptorPool pool;
+	VkDescriptorSet descriptorSet;
+	result = dev->descriptorSetAllocator->allocate(dev->etc2SetLayout, &pool, &descriptorSet);
+	if (result != VK_SUCCESS) {
+	    Logger::log("error", "Failed to allocate descriptor set: %d", result);
+		return result;
+	}
+	cb->currentStagingResources->AddDescriptorSet(pool, descriptorSet);
+
+	VkDescriptorBufferInfo src_info = {
+		.buffer = decodedBuffer->handle,
+		.offset = 0,
+		.range = VK_WHOLE_SIZE
+	};
+
+	VkDescriptorBufferInfo dst_info = {
+		.buffer = stagingBuffer->handle,
+		.offset = 0,
+		.range = VK_WHOLE_SIZE
+	};
+
+	VkWriteDescriptorSet desc_writes[2];
+	desc_writes[0] = VkWriteDescriptorSet {
+	    .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+	    .dstSet = descriptorSet,
+	    .dstBinding = 0,
+	    .descriptorCount = 1,
+	    .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+	    .pBufferInfo = &src_info,
+	};
+	desc_writes[1] = VkWriteDescriptorSet {
+	    .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+	    .dstSet = descriptorSet,
+	    .dstBinding = 1,
+	    .descriptorCount = 1,
+	    .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+	    .pBufferInfo = &dst_info,
+	};
+
+	table.UpdateDescriptorSets(device, 2, desc_writes, 0, NULL);
+	VkBufferMemoryBarrier bufferBarrier = {
+        .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
+        .srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT,
+        .dstAccessMask = VK_ACCESS_SHADER_READ_BIT,
+        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .buffer = stagingBuffer->handle,
+        .offset = 0,
+        .size = VK_WHOLE_SIZE
+    };
+
+    table.CmdPipelineBarrier(
+        commandbuffer,
+        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+        0,
+        0, NULL,
+        1, &bufferBarrier,
+        0, NULL
+    );
+    VkPipeline etc2Pipeline = dev->etc2Pipeline;
+	table.CmdBindPipeline(commandbuffer, VK_PIPELINE_BIND_POINT_COMPUTE, etc2Pipeline);
+	table.CmdPushConstants(commandbuffer,
+		dev->etc2Layout, VK_SHADER_STAGE_COMPUTE_BIT, 0,
+		sizeof(constants), &constants);
+	table.CmdBindDescriptorSets(commandbuffer,
+		VK_PIPELINE_BIND_POINT_COMPUTE, dev->etc2Layout, 0, 1,
+		&descriptorSet, 0, nullptr);
+	table.CmdDispatch(commandbuffer, (width + 7) / 8, (height + 7) / 8, 1);
+
 	return VK_SUCCESS;
 }
 
@@ -340,6 +541,13 @@ decompress_bcn_compute(struct device *dev,
 	int offsetX = copy_region->imageOffset.x;
 	int offsetY = copy_region->imageOffset.y;
 	int use_image_view = dev->use_image_view && depth == 1;
+	int use_etc2 = dstImage->transcode_to_etc2;
+
+	std::unique_ptr<struct buffer> decodedBuffer;
+	if (use_etc2) {
+		int texel_size = is_bc6(format) ? 8 : 4;
+		decodedBuffer = create_staging_buffer(dev, width * height * depth * texel_size);
+	}
 
 	struct push_constants constants = {
 		.format = format,
@@ -371,8 +579,9 @@ decompress_bcn_compute(struct device *dev,
 	};
 
 	// Scope this at the UpdateDescriptorSets level to avoid use-after-free
+	auto targetBuffer = use_etc2 ? decodedBuffer.get() : stagingBuffer;
 	VkDescriptorBufferInfo dst_info = {
-		.buffer = use_image_view ? VK_NULL_HANDLE : stagingBuffer->handle,
+		.buffer = use_image_view ? VK_NULL_HANDLE : targetBuffer->handle,
 		.offset = 0,
 		.range = VK_WHOLE_SIZE
 	};
@@ -528,6 +737,15 @@ decompress_bcn_compute(struct device *dev,
 			VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 
 			VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT,
 		    0, 0, nullptr, 0, nullptr, 1, &second_barrier);
+	}
+
+	if (use_etc2) {
+		VkResult result = encode_etc2_compute(dev, cb, format, copy_region, decodedBuffer.get(), stagingBuffer);
+		if (result != VK_SUCCESS) {
+		    Logger::log("error", "encode_etc2_compute failed: %d", result);
+			return result;
+		}
+		cb->currentStagingResources->AddStagingBuffer(std::move(decodedBuffer));
 	}
 
 	return VK_SUCCESS;

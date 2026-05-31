@@ -55,6 +55,46 @@ foreach(SHADER ${SHADER_NAMES})
     list(APPEND SPIRV_HEADERS ${HEADER_OUT})
 endforeach()
 
+# ETC2 encode shader
+find_program(SLANG_COMPILER slangc)
+option(FORCE_GLSL "Force the build to use GLSL instead of Slang" OFF)
+
+set(ETC2_SLANG "${CMAKE_CURRENT_SOURCE_DIR}/src/etc2_encode.slang")
+set(ETC2_SPV "${CMAKE_CURRENT_BINARY_DIR}/src/etc2_encode.spv")
+set(ETC2_HEADER "${CMAKE_CURRENT_BINARY_DIR}/src/etc2_encode_spv.h")
+
+if(SLANG_COMPILER AND NOT FORCE_GLSL)
+    set(ETC2_COMP "${CMAKE_CURRENT_BINARY_DIR}/src/etc2_encode.comp")
+    add_custom_command(
+        OUTPUT ${ETC2_COMP}
+        COMMAND ${CMAKE_COMMAND} -E echo "// AUTO-GENERATED - DO NOT EDIT, see ${ETC2_SLANG}" > ${ETC2_COMP}
+        COMMAND slangc ${ETC2_SLANG} -target glsl -line-directive-mode none -D DISABLE_RECONSTRUCTION >> ${ETC2_COMP}
+        DEPENDS ${ETC2_SLANG}
+        COMMENT "Generating GLSL shader: etc2_encode.comp"
+    )
+else()
+    set(ETC2_COMP "${CMAKE_CURRENT_SOURCE_DIR}/src/etc2_encode.comp")
+    message(STATUS "Shader Compiler: slangc not found or disabled. Using the auto-generated ${ETC2_COMP} instead.")
+    if(FORCE_GLSL)
+        message(WARNING "  Run cmake with -DFORCE_GLSL=OFF to use ${ETC2_SLANG}")
+    endif()
+endif()
+
+add_custom_command(
+    OUTPUT ${ETC2_SPV}
+    COMMAND glslc -O ${ETC2_COMP} -o ${ETC2_SPV}
+    DEPENDS ${ETC2_COMP}
+    COMMENT "Compiling ${ETC2_COMP}"
+)
+
+add_custom_command(
+    OUTPUT ${ETC2_HEADER}
+    COMMAND ${CMAKE_COMMAND} -E chdir "${CMAKE_CURRENT_BINARY_DIR}/src" xxd -i etc2_encode.spv > ${ETC2_HEADER}
+    DEPENDS ${ETC2_SPV}
+    COMMENT "Generating header via xxd: ${ETC2_HEADER}"
+)
+list(APPEND SPIRV_HEADERS ${ETC2_HEADER})
+
 file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS "src/*.cpp")
 
 # Force re-compilation of bcn.cpp when ETC2_HEADER or SPIRV_HEADERS change

@@ -89,7 +89,7 @@ BCnLayer_CmdCopyBufferToImage(VkCommandBuffer commandBuffer,
 	struct image *img = find_image(dstImage);
 	struct buffer *buf = find_buffer(srcBuffer);
 	VkFormat format = img->format;
-	int texel_size = is_bc6(format) ? 8 : 4;
+	int texel_size = img->transcode_to_etc2 ? 1 : is_bc6(format) ? 8 : 4;
 
 	table = dev->table;
 	
