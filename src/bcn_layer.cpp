@@ -539,9 +539,16 @@ BCnLayer_CreateDevice(VkPhysicalDevice physicalDevice,
     
     auto transcode_to_etc1 = getenv("BCN_TRANSCODE_TO_ETC1") ? atoi(getenv("BCN_TRANSCODE_TO_ETC1")) : 0;
     auto transcode_to_etc2 = getenv("BCN_TRANSCODE_TO_ETC2") ? atoi(getenv("BCN_TRANSCODE_TO_ETC2")) : transcode_to_etc1;
+    auto transcode_to_astc = getenv("BCN_TRANSCODE_TO_ASTC") ? atoi(getenv("BCN_TRANSCODE_TO_ASTC")) : 0;
+
     if (transcode_to_etc2 && !featuresMap[GetKey(physicalDevice)].textureCompressionETC2) {
         Logger::log("info", "textureCompressionETC2 is not supported, disabling ETC2 transcode");
         transcode_to_etc2 = false;
+    }
+
+    if (transcode_to_astc && !featuresMap[GetKey(physicalDevice)].textureCompressionASTC_LDR) {
+        Logger::log("info", "textureCompressionASTC_LDR is not supported, disabling ASTC transcode");
+        transcode_to_astc = false;
     }
 
     memoryIndex = idx < memoryProps.memoryTypeCount ? idx : UINT32_MAX;
@@ -551,6 +558,8 @@ BCnLayer_CreateDevice(VkPhysicalDevice physicalDevice,
     	enabledFeatures.textureCompressionBC &= featuresMap[GetKey(physicalDevice)].textureCompressionBC;
         if (transcode_to_etc2)
             enabledFeatures.textureCompressionETC2 = featuresMap[GetKey(physicalDevice)].textureCompressionETC2;
+        if (transcode_to_astc)
+            enabledFeatures.textureCompressionASTC_LDR = featuresMap[GetKey(physicalDevice)].textureCompressionASTC_LDR;
     	createInfo.pEnabledFeatures = &enabledFeatures;
     }
 
@@ -645,8 +654,9 @@ BCnLayer_CreateDevice(VkPhysicalDevice physicalDevice,
     device->alloc = pAllocator;
     device->transcode_to_etc1 = transcode_to_etc1;
     device->transcode_to_etc2 = transcode_to_etc2;
+    device->transcode_to_astc = transcode_to_astc;
     
-    if (!transcode_to_etc2) { // transcoding is mutually exclusive with use_image_view
+    if (!transcode_to_etc2 && !transcode_to_astc) { // transcoding is mutually exclusive with use_image_view
         device->use_image_view = getenv("BCN_COMPUTE_IMAGE_VIEW") ? atoi(getenv("BCN_COMPUTE_IMAGE_VIEW")) : 1;
     }
    
@@ -657,7 +667,9 @@ BCnLayer_CreateDevice(VkPhysicalDevice physicalDevice,
     }
 
     device->syncPool = std::make_unique<SyncPool>(device->handle);
-
+    uint32_t buffer_multiplier = 1u;
+    if (device->transcode_to_etc2) buffer_multiplier = std::max(buffer_multiplier, 3u);
+    if (device->transcode_to_astc) buffer_multiplier = std::max(buffer_multiplier, 5u);
     const DescriptorSetAllocator::PoolSizes default_pool_sizes {
         .sizes = {
             {
@@ -667,7 +679,7 @@ BCnLayer_CreateDevice(VkPhysicalDevice physicalDevice,
             },
             {
                 .type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-                .descriptorCount = 256u * (device -> transcode_to_etc2 ? 3u : 1u),
+                .descriptorCount = 256u * buffer_multiplier,
             }
         },
         .maxSets = 256u,

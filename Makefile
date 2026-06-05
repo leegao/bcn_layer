@@ -69,7 +69,7 @@ src/%.spv : src/%.comp
 src/%_spv.h : src/%.spv
 	cd src && xxd -i $(notdir $<) > $(notdir $@)
 
-$(OUTPUT) : $(SOURCES) $(SPIRV_HEADERS) $(HEADERS) src/etc2_encode_spv.h src/etc2_encode.comp
+$(OUTPUT) : $(SOURCES) $(SPIRV_HEADERS) $(HEADERS) src/etc2_encode_spv.h src/etc2_encode.comp src/astc_encoder_spv.h src/astc_encoder.comp
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) $(SOURCES) -o $(OUTPUT)
 
 .PHONY: clean install
@@ -85,3 +85,4 @@ clean:
 	rm -f $(SPIRV_SHADERS)
 	rm -f $(SPIRV_HEADERS)
 	rm -f src/etc2_encode_spv.h
+	rm -f src/astc_encoder_spv.h

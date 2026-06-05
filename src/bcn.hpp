@@ -23,6 +23,12 @@ struct etc2_push_constants {
     uint32_t flags;
 };
 
+struct astc_push_constants {
+    uint32_t width;
+    uint32_t height;
+    uint32_t flags;
+};
+
 bool is_s3tc(VkFormat);
 bool is_rgtc(VkFormat);
 bool is_bc6(VkFormat);
@@ -30,6 +36,7 @@ bool is_bc7(VkFormat);
 bool is_supported_bcn_format(struct device *, VkFormat);
 VkFormat get_format_for_bcn(VkFormat);
 VkFormat get_format_for_bcn_to_etc2(struct device *, VkFormat);
+VkFormat get_format_for_bcn_to_astc(struct device *, VkFormat);
 VkResult create_bcn_compute_pipelines(struct device *dev);
 VkResult decompress_bcn_compute(struct device *dev,
                        			VkCommandBuffer commandbuffer,
@@ -39,5 +46,10 @@ VkResult decompress_bcn_compute(struct device *dev,
                        			struct buffer *stagingBuffer,
                        			struct image *dstImage,
                        			VkImageLayout dstImageLayout);
-
+VkResult encode_astc_compute(struct device *dev,
+                             struct command_buffer *cb,
+                             VkFormat format,
+                             VkBufferImageCopy *copy_region,
+                             struct buffer *decodedBuffer,
+                             struct buffer *stagingBuffer);
 #endif

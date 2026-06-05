@@ -95,6 +95,60 @@ add_custom_command(
 )
 list(APPEND SPIRV_HEADERS ${ETC2_HEADER})
 
+set(ASTC_SLANG "${CMAKE_CURRENT_SOURCE_DIR}/src/astc_encoder.slang")
+set(ASTC_SPV "${CMAKE_CURRENT_BINARY_DIR}/src/astc_encoder.spv")
+set(ASTC_HEADER "${CMAKE_CURRENT_BINARY_DIR}/src/astc_encoder_spv.h")
+
+if(SLANG_COMPILER AND NOT FORCE_GLSL)
+    set(ASTC_COMP "${CMAKE_CURRENT_BINARY_DIR}/src/astc_encoder.comp")
+    add_custom_command(
+        OUTPUT ${ASTC_COMP}
+        COMMAND ${CMAKE_COMMAND} -E echo "// AUTO-GENERATED - DO NOT EDIT, see ${ASTC_SLANG}" > ${ASTC_COMP}
+        COMMAND slangc ${ASTC_SLANG} -target glsl -line-directive-mode none >> ${ASTC_COMP}
+        DEPENDS ${ASTC_SLANG}
+        COMMENT "Generating GLSL shader: astc_encoder.comp"
+    )
+else()
+    set(ASTC_COMP "${CMAKE_CURRENT_SOURCE_DIR}/src/astc_encoder.comp")
+    message(STATUS "Shader Compiler: slangc not found or disabled. Using the auto-generated ${ASTC_COMP} instead.")
+endif()
+
+add_custom_command(
+    OUTPUT ${ASTC_SPV}
+    COMMAND glslc -O ${ASTC_COMP} -o ${ASTC_SPV}
+    DEPENDS ${ASTC_COMP}
+    COMMENT "Compiling ${ASTC_SPV}"
+)
+
+add_custom_command(
+    OUTPUT ${ASTC_HEADER}
+    COMMAND ${CMAKE_COMMAND} -E chdir "${CMAKE_CURRENT_BINARY_DIR}/src" xxd -i astc_encoder.spv > ${ASTC_HEADER}
+    DEPENDS ${ASTC_SPV}
+    COMMENT "Generating header via xxd: ${ASTC_HEADER}"
+)
+list(APPEND SPIRV_HEADERS ${ASTC_HEADER})
+
+set(LUT2_BIN "${CMAKE_CURRENT_SOURCE_DIR}/src/lut2.bin")
+set(LUT2_HEADER "${CMAKE_CURRENT_BINARY_DIR}/src/lut2.h")
+set(ASTC_2P_LUT_S2_BIN "${CMAKE_CURRENT_SOURCE_DIR}/src/astc_2p_lut_s2.bin")
+set(ASTC_2P_LUT_S2_HEADER "${CMAKE_CURRENT_BINARY_DIR}/src/astc_2p_lut_s2.h")
+
+add_custom_command(
+    OUTPUT ${LUT2_HEADER}
+    COMMAND ${CMAKE_COMMAND} -E chdir "${CMAKE_CURRENT_SOURCE_DIR}/src" xxd -i lut2.bin > ${LUT2_HEADER}
+    DEPENDS ${LUT2_BIN}
+    COMMENT "Generating header via xxd: ${LUT2_HEADER}"
+)
+list(APPEND SPIRV_HEADERS ${LUT2_HEADER})
+
+add_custom_command(
+    OUTPUT ${ASTC_2P_LUT_S2_HEADER}
+    COMMAND ${CMAKE_COMMAND} -E chdir "${CMAKE_CURRENT_SOURCE_DIR}/src" xxd -i astc_2p_lut_s2.bin > ${ASTC_2P_LUT_S2_HEADER}
+    DEPENDS ${ASTC_2P_LUT_S2_BIN}
+    COMMENT "Generating header via xxd: ${ASTC_2P_LUT_S2_HEADER}"
+)
+list(APPEND SPIRV_HEADERS ${ASTC_2P_LUT_S2_HEADER})
+
 file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS "src/*.cpp")
 
 # Force re-compilation of bcn.cpp when ETC2_HEADER or SPIRV_HEADERS change
