@@ -29,8 +29,10 @@ BCnLayer_CreateImage(VkDevice device,
 
 	table = dev->table;
 
-	if (is_supported_etc2_format(dev, pCreateInfo->format)) {
-	    auto target_format = get_format_for_etc2(pCreateInfo->format);
+	if (is_supported_etc2_format(dev, pCreateInfo->format) || is_supported_astc_format(dev, pCreateInfo->format)) {
+	    auto target_format = is_supported_etc2_format(dev, pCreateInfo->format)
+					? get_format_for_etc2(pCreateInfo->format)
+					: get_format_for_astc(pCreateInfo->format);
 	    create_info.format = target_format;
 	    create_info.usage |= VK_IMAGE_USAGE_STORAGE_BIT;
 	    create_info.flags &= ~VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT;
@@ -94,8 +96,10 @@ BCnLayer_CreateImageView(VkDevice device,
 
 	table = dev->table;
 
-	if (is_supported_etc2_format(dev, pCreateInfo->format)) {
-		create_info.format = get_format_for_etc2(pCreateInfo->format);
+	if (is_supported_etc2_format(dev, pCreateInfo->format) || is_supported_astc_format(dev, pCreateInfo->format)) {
+		create_info.format = is_supported_etc2_format(dev, pCreateInfo->format)
+					? get_format_for_etc2(pCreateInfo->format)
+					: get_format_for_astc(pCreateInfo->format);
 	}
 
 	result = table.CreateImageView(device, &create_info, pAllocator, pImageView);

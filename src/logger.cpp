@@ -8,7 +8,7 @@ namespace Logger {
 	    {"error", BCN_LAYER_LOG_ERROR},
 	    {"", 0}
 	};
-	
+
 	uint64_t bcn_layer_log_mask;
 
 	void init();
@@ -18,15 +18,15 @@ namespace Logger {
     	int index = 0;
 
         while (!bcn_layer_log_options[index].name.empty()) {
-        	if (!std::strcmp(bcn_layer_log_options[index].name.c_str(), option))                      
+        	if (!std::strcmp(bcn_layer_log_options[index].name.c_str(), option))
          		return bcn_layer_log_options[index].value;
-                                                                                                   
+
          	index++;
         }
 
         return 0;
     }
-      
+
 	static bool get_bcn_layer_log_level(const std::string& option) {
 		uint64_t flag = get_debug_flag(option.c_str());
 
@@ -35,19 +35,19 @@ namespace Logger {
 
 		return false;
 	}
-	
+
 	void log (const std::string& log_level, const char *format, ...) {
-		if (!get_bcn_layer_log_level(log_level.c_str()))
-			return;
-			
+		// if (!get_bcn_layer_log_level(log_level.c_str()))
+		// 	return;
+
 		constexpr size_t BUFFER_SIZE = 1024;
 		char buffer[BUFFER_SIZE];
-		
+
 		va_list args;
 		va_start(args, format);
 		vsnprintf(buffer, BUFFER_SIZE, format, args);
 		va_end(args);
-		
+
 		std::cerr << "[" << log_level << "]: " << buffer << std::endl;
 	}
 
@@ -56,7 +56,7 @@ namespace Logger {
 	    if (initialized)
 	        return;
 	    initialized = true;
-		
+
 		char *bcn_layer_log_env = std::getenv("BCN_LAYER_LOG_LEVEL");
 		if (!bcn_layer_log_env) {
 			bcn_layer_log_mask = 0;

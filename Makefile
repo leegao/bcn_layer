@@ -42,7 +42,7 @@ src/%.spv : src/%.comp
 src/%_spv.h : src/%.spv
 	cd src && xxd -i $(notdir $<) > $(notdir $@)
 
-$(OUTPUT) : $(SOURCES) $(HEADERS) src/etc2.comp src/etc2_spv.h
+$(OUTPUT) : $(SOURCES) $(HEADERS) src/etc2.comp src/etc2_spv.h src/astc_decoder.comp src/astc_decoder_spv.h
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) $(SOURCES) -o $(OUTPUT)
 
 .PHONY: clean install

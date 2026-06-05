@@ -107,6 +107,7 @@ BCnLayer_CreateInstance(const VkInstanceCreateInfo *pCreateInfo,
     table.GetPhysicalDeviceFeatures = (PFN_vkGetPhysicalDeviceFeatures)gip(*pInstance, "vkGetPhysicalDeviceFeatures");
     table.GetPhysicalDeviceFeatures2 = (PFN_vkGetPhysicalDeviceFeatures2)gip(*pInstance, "vkGetPhysicalDeviceFeatures2");
     table.GetPhysicalDeviceQueueFamilyProperties = (PFN_vkGetPhysicalDeviceQueueFamilyProperties)gip(*pInstance, "vkGetPhysicalDeviceQueueFamilyProperties");
+    table.EnumerateDeviceExtensionProperties = (PFN_vkEnumerateDeviceExtensionProperties)gip(*pInstance, "vkEnumerateDeviceExtensionProperties");
 
     {
     	scoped_lock l(global_lock);
@@ -172,6 +173,7 @@ BCnLayer_GetPhysicalDeviceFeatures(VkPhysicalDevice physicalDevice,
 
 	instanceDispatch[GetKey(physicalDevice)].GetPhysicalDeviceFeatures(physicalDevice, pFeatures);
 	pFeatures->textureCompressionETC2 = true;
+	pFeatures->textureCompressionASTC_LDR = true;
 }
 
 VK_LAYER_EXPORT void VKAPI_CALL
@@ -182,6 +184,71 @@ BCnLayer_GetPhysicalDeviceFeatures2(VkPhysicalDevice physicalDevice,
 
     instanceDispatch[GetKey(physicalDevice)].GetPhysicalDeviceFeatures2(physicalDevice, pFeatures);
     pFeatures->features.textureCompressionETC2 = true;
+    pFeatures->features.textureCompressionASTC_LDR = true;
+
+    void* pNext = pFeatures->pNext;
+    while (pNext) {
+        VkBaseOutStructure* header = reinterpret_cast<VkBaseOutStructure*>(pNext);
+        if (header->sType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TEXTURE_COMPRESSION_ASTC_HDR_FEATURES_EXT) {
+            auto* astcHdrFeatures = reinterpret_cast<VkPhysicalDeviceTextureCompressionASTCHDRFeaturesEXT*>(pNext);
+            astcHdrFeatures->textureCompressionASTC_HDR = VK_TRUE;
+        }
+        pNext = header->pNext;
+    }
+}
+
+VK_LAYER_EXPORT VkResult VKAPI_CALL
+BCnLayer_EnumerateDeviceExtensionProperties(VkPhysicalDevice physicalDevice,
+                                            const char *pLayerName,
+                                            uint32_t *pPropertyCount,
+                                            VkExtensionProperties *pProperties)
+{
+    scoped_lock l(global_lock);
+    auto& dispatch = instanceDispatch[GetKey(physicalDevice)];
+    VkResult result = dispatch.EnumerateDeviceExtensionProperties(physicalDevice, pLayerName, pPropertyCount, pProperties);
+
+    Logger::log("info", "BCnLayer_EnumerateDeviceExtensionProperties: %s", result == VK_SUCCESS ? "VK_SUCCESS" : "VK_INCOMPLETE");
+
+    // Layers should only inject extensions when pLayerName is NULL
+    if (pLayerName) return result;
+
+    // Define the extensions this layer injects
+    const int layerExtensionCount = 1;
+    VkExtensionProperties layerExtensions[layerExtensionCount];
+
+    strncpy(layerExtensions[0].extensionName, VK_EXT_TEXTURE_COMPRESSION_ASTC_HDR_EXTENSION_NAME, VK_MAX_EXTENSION_NAME_SIZE);
+    layerExtensions[0].specVersion = 1;
+
+    // strncpy(layerExtensions[1].extensionName, VK_KHR_8BIT_STORAGE_EXTENSION_NAME, VK_MAX_EXTENSION_NAME_SIZE);
+    // layerExtensions[1].specVersion = 1;
+
+    // Case 1: Application is just querying the required size
+    if (pProperties == nullptr) {
+        if (result == VK_SUCCESS || result == VK_INCOMPLETE) {
+            *pPropertyCount += layerExtensionCount;
+        }
+        return result;
+    }
+
+    // Case 2: Application is requesting the actual properties data
+    uint32_t originalCount = *pPropertyCount;
+    if (result == VK_SUCCESS || result == VK_INCOMPLETE) {
+        for (int i = 0; i < layerExtensionCount; ++i) {
+            // Only append if the application-allocated buffer has space left
+            // if (originalCount < *pPropertyCount + 1) {
+            //     // Note: The app's buffer might be full if they didn't account for our size increase
+            //     pProperties[originalCount] = layerExtensions[i];
+            //     originalCount++;
+            // } else {
+            //     result = VK_SUCCESS;
+            // }
+            pProperties[originalCount] = layerExtensions[i];
+            originalCount++;
+        }
+        *pPropertyCount = originalCount;
+    }
+
+    return result;
 }
 
 VKAPI_ATTR VkResult VKAPI_CALL
@@ -203,6 +270,9 @@ BCnLayer_GetPhysicalDeviceImageFormatProperties(VkPhysicalDevice physicalDevice,
    		case VK_FORMAT_ETC2_R8G8B8A8_UNORM_BLOCK:
    		case VK_FORMAT_ETC2_R8G8B8_SRGB_BLOCK:
    		case VK_FORMAT_ETC2_R8G8B8_UNORM_BLOCK:
+        case VK_FORMAT_ASTC_4x4_UNORM_BLOCK:
+        case VK_FORMAT_ASTC_4x4_SRGB_BLOCK:
+        case VK_FORMAT_ASTC_4x4_SFLOAT_BLOCK:
    			if (type & VK_IMAGE_TYPE_1D) {
    				pImageFormatProperties->maxExtent.width = props2.properties.limits.maxImageDimension1D;
    			    pImageFormatProperties->maxExtent.height = 1;
@@ -262,6 +332,9 @@ BCnLayer_GetPhysicalDeviceImageFormatProperties2(VkPhysicalDevice physicalDevice
   		case VK_FORMAT_ETC2_R8G8B8A8_UNORM_BLOCK:
   		case VK_FORMAT_ETC2_R8G8B8_SRGB_BLOCK:
   		case VK_FORMAT_ETC2_R8G8B8_UNORM_BLOCK:
+        case VK_FORMAT_ASTC_4x4_UNORM_BLOCK:
+        case VK_FORMAT_ASTC_4x4_SRGB_BLOCK:
+        case VK_FORMAT_ASTC_4x4_SFLOAT_BLOCK:
    			if (pImageFormatInfo->type & VK_IMAGE_TYPE_1D) {
    				pImageFormatProperties->imageFormatProperties.maxExtent.width = props2.properties.limits.maxImageDimension1D;
    				pImageFormatProperties->imageFormatProperties.maxExtent.height = 1;
@@ -324,6 +397,9 @@ BCnLayer_GetPhysicalDeviceFormatProperties(VkPhysicalDevice physicalDevice,
   		case VK_FORMAT_ETC2_R8G8B8A8_UNORM_BLOCK:
   		case VK_FORMAT_ETC2_R8G8B8_SRGB_BLOCK:
   		case VK_FORMAT_ETC2_R8G8B8_UNORM_BLOCK:
+        case VK_FORMAT_ASTC_4x4_UNORM_BLOCK:
+        case VK_FORMAT_ASTC_4x4_SRGB_BLOCK:
+        case VK_FORMAT_ASTC_4x4_SFLOAT_BLOCK:
    			pFormatProperties->optimalTilingFeatures |= VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT | VK_FORMAT_FEATURE_BLIT_SRC_BIT | VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT | VK_FORMAT_FEATURE_TRANSFER_DST_BIT;
    			return;
    		default:
@@ -402,7 +478,28 @@ BCnLayer_CreateDevice(VkPhysicalDevice physicalDevice,
     if (createInfo.pEnabledFeatures) {
     	enabledFeatures = *createInfo.pEnabledFeatures;
     	enabledFeatures.textureCompressionETC2 &= featuresMap[GetKey(physicalDevice)].textureCompressionETC2;
+    	enabledFeatures.textureCompressionASTC_LDR &= featuresMap[GetKey(physicalDevice)].textureCompressionASTC_LDR;
     	createInfo.pEnabledFeatures = &enabledFeatures;
+    }
+
+
+    VkPhysicalDevice8BitStorageFeatures features8Bit{
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_8BIT_STORAGE_FEATURES,
+        .pNext = (void *) createInfo.pNext,
+        .storageBuffer8BitAccess = VK_TRUE,
+        .uniformAndStorageBuffer8BitAccess = VK_TRUE,
+        .storagePushConstant8 = VK_TRUE,
+    };
+    createInfo.pNext = (void *)&features8Bit;
+
+    const void* pNext = createInfo.pNext;
+    while (pNext) {
+        VkBaseOutStructure* header = (VkBaseOutStructure*)pNext;
+        if (header->sType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TEXTURE_COMPRESSION_ASTC_HDR_FEATURES_EXT) {
+            auto* astcHdrFeatures = (VkPhysicalDeviceTextureCompressionASTCHDRFeaturesEXT*)pNext;
+            astcHdrFeatures->textureCompressionASTC_HDR = VK_FALSE;
+        }
+        pNext = header->pNext;
     }
 
     PFN_vkCreateDevice createDevice = (PFN_vkCreateDevice)gipa(instance, "vkCreateDevice");
@@ -463,6 +560,7 @@ BCnLayer_CreateDevice(VkPhysicalDevice physicalDevice,
     table.MapMemory = (PFN_vkMapMemory)gdpa(*pDevice, "vkMapMemory");
     table.UnmapMemory = (PFN_vkUnmapMemory)gdpa(*pDevice, "vkUnmapMemory");
     table.InvalidateMappedMemoryRanges = (PFN_vkInvalidateMappedMemoryRanges)gdpa(*pDevice, "vkInvalidateMappedMemoryRanges");
+    table.GetBufferMemoryRequirements = (PFN_vkGetBufferMemoryRequirements)gdpa(*pDevice, "vkGetBufferMemoryRequirements");
 
     uint32_t queueCount;
     VkQueue queue;
@@ -496,6 +594,12 @@ BCnLayer_CreateDevice(VkPhysicalDevice physicalDevice,
     result = create_etc2_compute_pipelines(device.get());
     if (result != VK_SUCCESS) {
     	Logger::log("error", "Failed to create BCn compute pipeline, res %d", result);
+        return result;
+    }
+
+    result = create_astc_compute_pipelines(device.get());
+    if (result != VK_SUCCESS) {
+    	Logger::log("error", "Failed to create ASTC compute pipeline, res %d", result);
         return result;
     }
 
@@ -595,6 +699,7 @@ BCnLayer_GetInstanceProcAddr(VkInstance instance,
 	GETPROCADDR(GetPhysicalDeviceFeatures2);
 	GETPROCADDR(DestroyInstance);
 	GETPROCADDR(CreateDevice);
+	GETPROCADDR(EnumerateDeviceExtensionProperties);
 
 	{
 		scoped_lock l(global_lock);

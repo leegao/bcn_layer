@@ -57,6 +57,12 @@ private:
     std::vector<VkSemaphore> freeSemaphores;
 };
 
+struct RawBuffer {
+    VkBuffer handle = VK_NULL_HANDLE;
+    VkDeviceMemory memory = VK_NULL_HANDLE;
+    VkDeviceSize size = 0;
+};
+
 struct device {
 	VkDevice handle;
 	VkPhysicalDevice physical;
@@ -66,10 +72,16 @@ struct device {
 	bool compute_bcn_auto;
 	VkLayerDispatchTable table;
 	VkPipeline etc2Pipeline;
+	VkPipeline astcPipeline;
 	VkPipelineLayout layout;
+	VkPipelineLayout astcLayout;
 	VkQueue queue;
 	uint32_t memoryIndex;
 	VkDescriptorSetLayout setLayout;
+	VkDescriptorSetLayout astcLutSetLayout;
+	VkDescriptorPool astcStaticPool;
+    VkDescriptorSet astcLutSet;
+    RawBuffer astcLutBuffers[6];
 	std::vector<VkDescriptorPool> pools;
 	const VkAllocationCallbacks *alloc;
 	std::unique_ptr<SyncPool> syncPool;

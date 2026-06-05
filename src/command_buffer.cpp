@@ -90,10 +90,12 @@ BCnLayer_CmdCopyBufferToImage(VkCommandBuffer commandBuffer,
 	struct buffer *buf = find_buffer(srcBuffer);
 	VkFormat format = img->format;
 	int texel_size = 4;
+	bool is_astc = is_supported_astc_format(dev, format);
+	bool is_etc2 = is_supported_etc2_format(dev, format);
 
 	table = dev->table;
 
-	if (!img || !buf || !is_supported_etc2_format(dev, format)) {
+	if (!img || !buf || (!is_etc2 && !is_astc)) {
 		table.CmdCopyBufferToImage(commandBuffer,
 			srcBuffer, dstImage, dstImageLayout, regionCount, pRegions);
 		return;
@@ -106,7 +108,11 @@ BCnLayer_CmdCopyBufferToImage(VkCommandBuffer commandBuffer,
        	int size = w * h * texel_size;
        	auto staging_buf = create_staging_buffer(dev, size);
 
-        decompress_etc2_compute(dev, commandBuffer, format, &copy_region, buf, staging_buf.get());
+        if (is_etc2) {
+            decompress_etc2_compute(dev, commandBuffer, format, &copy_region, buf, staging_buf.get());
+        } else if (is_astc) {
+            decompress_astc_compute(dev, commandBuffer, format, &copy_region, buf, staging_buf.get());
+        }
 
 		VkBufferMemoryBarrier bufferBarrier = {
 			.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
@@ -152,7 +158,7 @@ BCnLayer_CmdCopyBufferToImage2(VkCommandBuffer commandBuffer,
 	auto regionCount = pCopyBufferToImageInfo->regionCount;
 	auto pRegions = pCopyBufferToImageInfo->pRegions;
 
-	if (!img || !buf || !is_supported_etc2_format(dev, format)) {
+	if (!img || !buf || (!is_supported_etc2_format(dev, format) && !is_supported_astc_format(dev, format))) {
 		dev->table.CmdCopyBufferToImage2(commandBuffer, pCopyBufferToImageInfo);
 		return;
 	}
