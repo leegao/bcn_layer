@@ -108,6 +108,7 @@ struct device {
 	int transcode_to_etc1 = 0;
 	int transcode_to_etc2 = 0;
 	int transcode_to_astc = 0;
+	int profile_transfers = 0;
 	VkDescriptorSetLayout setLayout;
 	VkDescriptorSetLayout etc2SetLayout;
 	VkDescriptorSetLayout astcSetLayout;

@@ -540,6 +540,7 @@ BCnLayer_CreateDevice(VkPhysicalDevice physicalDevice,
     auto transcode_to_etc1 = getenv("BCN_TRANSCODE_TO_ETC1") ? atoi(getenv("BCN_TRANSCODE_TO_ETC1")) : 0;
     auto transcode_to_etc2 = getenv("BCN_TRANSCODE_TO_ETC2") ? atoi(getenv("BCN_TRANSCODE_TO_ETC2")) : transcode_to_etc1;
     auto transcode_to_astc = getenv("BCN_TRANSCODE_TO_ASTC") ? atoi(getenv("BCN_TRANSCODE_TO_ASTC")) : 0;
+    auto profile_transfers = getenv("BCN_PROFILE_TRANSFERS") ? atoi(getenv("BCN_PROFILE_TRANSFERS")) : 0;
 
     if (transcode_to_etc2 && !featuresMap[GetKey(physicalDevice)].textureCompressionETC2) {
         Logger::log("info", "textureCompressionETC2 is not supported, disabling ETC2 transcode");
@@ -655,6 +656,7 @@ BCnLayer_CreateDevice(VkPhysicalDevice physicalDevice,
     device->transcode_to_etc1 = transcode_to_etc1;
     device->transcode_to_etc2 = transcode_to_etc2;
     device->transcode_to_astc = transcode_to_astc;
+    device->profile_transfers = profile_transfers;
     
     if (!transcode_to_etc2 && !transcode_to_astc) { // transcoding is mutually exclusive with use_image_view
         device->use_image_view = getenv("BCN_COMPUTE_IMAGE_VIEW") ? atoi(getenv("BCN_COMPUTE_IMAGE_VIEW")) : 1;
