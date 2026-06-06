@@ -639,17 +639,14 @@ encode_astc_compute(struct device *dev,
 	uint width = copy_region->imageExtent.width;
 	uint height = copy_region->imageExtent.height;
 
-	// TODO(leegao): make this work for bc6 and snorm
+	// TODO(leegao): more optimization flags (e.g. 2-partition mode, fast mode, etc)
     uint32_t flags = 0b00000;
-    // if (target_format == VK_FORMAT_ETC2_R8G8B8_UNORM_BLOCK) {
-    //     flags |= 0b00100; // no alpha
-    // }
-    // if (format == VK_FORMAT_BC6H_SFLOAT_BLOCK || format == VK_FORMAT_BC6H_UFLOAT_BLOCK) {
-    //     flags |= 0b01000; // translate sfloat16 to unorm8
-    // }
-    // if (format == VK_FORMAT_BC4_SNORM_BLOCK || format == VK_FORMAT_BC5_SNORM_BLOCK) {
-    //     flags |= 0b10000; // snorm8 to unorm8
-    // }
+    if (format == VK_FORMAT_BC6H_SFLOAT_BLOCK || format == VK_FORMAT_BC6H_UFLOAT_BLOCK) {
+        flags |= 0b01000; // translate sfloat16 to unorm8
+    }
+    if (format == VK_FORMAT_BC4_SNORM_BLOCK || format == VK_FORMAT_BC5_SNORM_BLOCK) {
+        flags |= 0b10000; // snorm8 to unorm8
+    }
 
 	struct astc_push_constants constants = {
 		.width = width,

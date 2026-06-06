@@ -99,6 +99,14 @@ struct Flags {
   property bool only_2p {
     get { return bool(flags[2]); }
   }
+
+  property bool use_sfloat16 {
+    get { return bool(flags[3]); }
+  }
+
+  property bool use_snorm8 {
+    get { return bool(flags[4]); }
+  }
 };
 
 struct PushConstants {
@@ -452,12 +460,26 @@ void main(uint3 gl_GlobalInvocationID: SV_DispatchThreadID) {
     for (int x = 0; x < 4; x++) {
       uint r, g, b, a;
 
-      var tex_coord = (tex_coord.y + y) * width + (tex_coord.x + x);
-      var tex_element = input_rgba8_buffer[tex_coord];
-      a = (tex_element >> 24) & 0xFFu;
-      b = (tex_element >> 16) & 0xFFu;
-      g = (tex_element >> 8) & 0xFFu;
-      r = (tex_element >> 0) & 0xFFu;
+      if (pushConstants.u_Flags.use_sfloat16) {
+        var tex_coord = ((tex_coord.y + y) * width + (tex_coord.x + x)) * 2;
+        var hi = input_rgba8_buffer[tex_coord];
+        r = sfloat16_to_uint8((hi >> 0) & 0xFFFFu);
+        g = sfloat16_to_uint8((hi >> 16) & 0xFFFFu);
+        var lo = input_rgba8_buffer[tex_coord + 1];
+        b = sfloat16_to_uint8((lo >> 0) & 0xFFFFu);
+        a = sfloat16_to_uint8((lo >> 16) & 0xFFFFu);
+      } else if (pushConstants.u_Flags.use_snorm8) {
+        var tex_coord = (tex_coord.y + y) * width + (tex_coord.x + x);
+        var tex_element = input_rgba8_buffer[tex_coord];
+        unpack_snorm_to_unorm_float(tex_element, r, g, b, a);
+      } else {
+        var tex_coord = (tex_coord.y + y) * width + (tex_coord.x + x);
+        var tex_element = input_rgba8_buffer[tex_coord];
+        a = (tex_element >> 24) & 0xFFu;
+        b = (tex_element >> 16) & 0xFFu;
+        g = (tex_element >> 8) & 0xFFu;
+        r = (tex_element >> 0) & 0xFFu;
+      }
 
       pixels[y * 4 + x] = uint4(r, g, b, a);
       if (a < 255)
