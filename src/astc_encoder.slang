@@ -138,26 +138,28 @@ void solve_weights(PartitionMap partition_map, int partition, half4 ep0,
   }
 }
 
-// void encode_block_AABB(out uint3 endpoint_start, out uint3 endpoint_end,
-//                        out uint weights[16]) {
-//   uint min_r = 255, min_g = 255, min_b = 255;
-//   uint max_r = 0, max_g = 0, max_b = 0;
-//   for (int i = 0; i < 16; i++) {
-//     min_r = min(min_r, pixels[i].x);
-//     min_g = min(min_g, pixels[i].y);
-//     min_b = min(min_b, pixels[i].z);
-//     max_r = max(max_r, pixels[i].x);
-//     max_g = max(max_g, pixels[i].y);
-//     max_b = max(max_b, pixels[i].z);
-//   }
+void encode_block_AABB(out uint4 endpoint_start, out uint4 endpoint_end,
+                       out uint weights[16]) {
+  uint min_r = 255, min_g = 255, min_b = 255, min_a = 255;
+  uint max_r = 0, max_g = 0, max_b = 0, max_a = 0;
+  for (int i = 0; i < 16; i++) {
+    min_r = min(min_r, pixels[i].x);
+    min_g = min(min_g, pixels[i].y);
+    min_b = min(min_b, pixels[i].z);
+    min_a = min(min_a, pixels[i].w);
+    max_r = max(max_r, pixels[i].x);
+    max_g = max(max_g, pixels[i].y);
+    max_b = max(max_b, pixels[i].z);
+    max_a = max(max_a, pixels[i].w);
+  }
 
-//   endpoint_start = uint3(min_r, min_g, min_b);
-//   endpoint_end = uint3(max_r, max_g, max_b);
-//   var ep0 = half3(endpoint_start) / 255.0h;
-//   var ep1 = half3(endpoint_end) / 255.0h;
-//   PartitionMap partition_map = PartitionMap( {});
-//   solve_weights(partition_map, 0, ep0, ep1, weights);
-// }
+  endpoint_start = uint4(min_r, min_g, min_b, min_a);
+  endpoint_end = uint4(max_r, max_g, max_b, max_a);
+  var ep0 = half4(endpoint_start) / 255.0h;
+  var ep1 = half4(endpoint_end) / 255.0h;
+  PartitionMap partition_map = PartitionMap( {});
+  solve_weights(partition_map, 0, ep0, ep1, weights);
+}
 
 struct PrincipleComponent {
   half4 centroid;
@@ -496,33 +498,43 @@ void main(uint3 gl_GlobalInvocationID: SV_DispatchThreadID) {
   uint4 eps[4] = {};
   uint4 packed_1p, packed_2p;
 
-  if (!pushConstants.u_Flags.only_2p) {
-    encode_block(ep0, ep1, weights_1p);
-    quant_weight_mode_1p = quantize(ep0, ep1, weights_1p, use_alpha);
-    mse_1p = reconstruct(ep0, ep1, weights_1p);
-    eps[0] = uint4(ep0);
-    eps[1] = uint4(ep1);
-    packed_1p = pack_astc_4x4_block<1>(eps, weights_1p, quant_weight_mode_1p,
-                                       0u, use_alpha);
-  }
+  // TODO(leegao): look for bit tricks for the 1-partition AABB case
+  // if (!pushConstants.u_Flags.only_2p) {
+  //   // if (pushConstants.u_Flags.use_aabb) {
+  //   //   encode_block_AABB(ep0, ep1, weights_1p);
+  //   // } else {
+  //   //   encode_block(ep0, ep1, weights_1p);
+  //   // }
+  encode_block_AABB(ep0, ep1, weights_1p);
+  quant_weight_mode_1p = 8u;
+  // quant_weight_mode_1p = quantize(ep0, ep1, weights_1p, use_alpha);
+  // mse_1p = reconstruct(ep0, ep1, weights_1p);
+  eps[0] = uint4(ep0);
+  eps[1] = uint4(ep1);
+  packed_1p = pack_astc_4x4_block<1>(eps, weights_1p, quant_weight_mode_1p, 0u,
+                                     use_alpha);
+  astc_blocks[buffer_index] = packed_1p;
+  // }
+  // astc_blocks[buffer_index] = uint4(0);
 
-  if (pushConstants.u_Flags.try_2p || pushConstants.u_Flags.only_2p) {
-    encode_block_2p(ep0, ep1, ep2, ep3, weights_2p, partition_map, astc_seed);
-    quant_weight_mode_2p = quantize(ep0, ep1, ep2, ep3, weights_2p, use_alpha);
-    mse_2p = reconstruct_2p(ep0, ep1, ep2, ep3, weights_2p, partition_map);
-    eps = { uint4(ep0), uint4(ep1), uint4(ep2), uint4(ep3) };
-    packed_2p = pack_astc_4x4_block<2>(eps, weights_2p, quant_weight_mode_2p,
-                                       astc_seed, use_alpha);
-  }
+  // if (pushConstants.u_Flags.try_2p || pushConstants.u_Flags.only_2p) {
+  //   encode_block_2p(ep0, ep1, ep2, ep3, weights_2p, partition_map,
+  //   astc_seed); quant_weight_mode_2p = quantize(ep0, ep1, ep2, ep3,
+  //   weights_2p, use_alpha); mse_2p = reconstruct_2p(ep0, ep1, ep2, ep3,
+  //   weights_2p, partition_map); eps = { uint4(ep0), uint4(ep1), uint4(ep2),
+  //   uint4(ep3) }; packed_2p = pack_astc_4x4_block<2>(eps, weights_2p,
+  //   quant_weight_mode_2p,
+  //                                      astc_seed, use_alpha);
+  // }
 
-  if (mse_1p < mse_2p) {
-    astc_blocks[buffer_index] = packed_1p;
-#ifdef ENABLE_DIAGNOSTICS
-    diagnostics[buffer_index].mse = mse_1p;
-#endif
-  } else {
-    astc_blocks[buffer_index] = packed_2p;
-  }
+  //   if (mse_1p < mse_2p) {
+  //     astc_blocks[buffer_index] = packed_1p;
+  // #ifdef ENABLE_DIAGNOSTICS
+  //     diagnostics[buffer_index].mse = mse_1p;
+  // #endif
+  //   } else {
+  //     astc_blocks[buffer_index] = packed_2p;
+  //   }
 
 #ifdef ENABLE_DIAGNOSTICS
   diagnostics[buffer_index].start_time = startTime;

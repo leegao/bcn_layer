@@ -640,7 +640,7 @@ encode_astc_compute(struct device *dev,
 	uint height = copy_region->imageExtent.height;
 
 	// TODO(leegao): more optimization flags (e.g. 2-partition mode, fast mode, etc)
-    uint32_t flags = 0b00000;
+    uint32_t flags = 0b00001; // Use AABB mode
     if (format == VK_FORMAT_BC6H_SFLOAT_BLOCK || format == VK_FORMAT_BC6H_UFLOAT_BLOCK) {
         flags |= 0b01000; // translate sfloat16 to unorm8
     }
