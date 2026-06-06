@@ -13,9 +13,11 @@ struct buffer {
     VkDeviceSize offset;
     struct device *device;
     const VkAllocationCallbacks *alloc;
+    VkFormat format;
+    int id;
 };
 
 struct buffer *find_buffer(VkBuffer);
-std::unique_ptr<struct buffer> create_staging_buffer(struct device *dev, int size);
+std::unique_ptr<struct buffer> create_staging_buffer(struct device *dev, int size, VkFormat format);
 
 #endif

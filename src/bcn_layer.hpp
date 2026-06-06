@@ -120,6 +120,7 @@ struct device {
 	std::condition_variable hasCleanupWork;
 	std::thread finalizer_thread;
     std::atomic_bool stop_thread {false};
+    std::string dump_buffers_path;
 };
 
 struct device *get_device(VkDevice);

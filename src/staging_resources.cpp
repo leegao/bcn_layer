@@ -3,6 +3,8 @@
 #include "bcn_layer.hpp"
 #include "buffer.hpp"
 #include <cstdint>
+#include <fstream>
+#include <sstream>
 
 std::pair<VkSemaphore, VkFence> StagingResources::MakeFence() {
     auto *dev = get_device(device);
@@ -51,7 +53,7 @@ void StagingResources::Cleanup() {
         if (!buf) continue;
 
 #ifdef DEBUG_BCN
-        Logger::log("info", "  Peeking into buffer %p, memory %p", buf->handle, buf->memory);
+        Logger::log("info", "  Peeking into buffer %p, memory %p, format %d", buf->handle, buf->memory, buf->format);
         uint32_t* mappedData;
         VkResult result = dev->table.MapMemory(device, buf->memory, 0, VK_WHOLE_SIZE, 0, (void **) &mappedData);
         if (result != VK_SUCCESS) {
@@ -68,6 +70,16 @@ void StagingResources::Cleanup() {
         Logger::log("info", "    StagingBuffer %p[1] = 0x%x, 0x%x, 0x%x, 0x%x", buf->handle, mappedData[4], mappedData[5], mappedData[6], mappedData[7]);
         Logger::log("info", "    StagingBuffer %p[2] = 0x%x, 0x%x, 0x%x, 0x%x", buf->handle, mappedData[8], mappedData[9], mappedData[10], mappedData[11]);
         Logger::log("info", "    StagingBuffer %p[3] = 0x%x, 0x%x, 0x%x, 0x%x", buf->handle, mappedData[12], mappedData[13], mappedData[14], mappedData[15]);
+
+        if (!dev->dump_buffers_path.empty()) {
+            std::stringstream ss;
+            std::string id_str = std::to_string(buf->id);
+            id_str = std::string(5 - id_str.length(), '0') + id_str;
+            ss << dev->dump_buffers_path << "/" << id_str << "_fmt_" << buf->format << ".bin";
+            std::ofstream out(ss.str(), std::ios::out | std::ios::binary);
+            out.write(reinterpret_cast<const char*>(mappedData), buf->size);
+            out.close();
+        }
         dev->table.UnmapMemory(device, buf->memory);
 #endif
 

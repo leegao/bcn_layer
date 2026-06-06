@@ -497,8 +497,8 @@ create_bcn_compute_pipelines(struct device *dev)
 	table.DestroyShaderModule(device, astcShaderModule, nullptr);
 
 	if (dev->transcode_to_astc) {
-		dev->lut2Buffer = create_staging_buffer(dev, lut2_bin_len * sizeof(uint32_t));
-		dev->astc2pLutBuffer = create_staging_buffer(dev, astc_2p_lut_s2_bin_len * sizeof(uint32_t));
+		dev->lut2Buffer = create_staging_buffer(dev, lut2_bin_len * sizeof(uint32_t), VK_FORMAT_UNDEFINED);
+		dev->astc2pLutBuffer = create_staging_buffer(dev, astc_2p_lut_s2_bin_len * sizeof(uint32_t), VK_FORMAT_UNDEFINED);
 
 		upload_static_lut(
             dev, dev->lut2Buffer.get(), (const uint32_t *) lut2_bin, lut2_bin_len);
@@ -797,7 +797,7 @@ decompress_bcn_compute(struct device *dev,
 	std::unique_ptr<struct buffer> decodedBuffer;
 	if (use_etc2 || use_astc) {
 		int texel_size = is_bc6(format) ? 8 : 4;
-		decodedBuffer = create_staging_buffer(dev, width * height * depth * texel_size);
+		decodedBuffer = create_staging_buffer(dev, width * height * depth * texel_size, get_format_for_bcn(format));
 	}
 
 	struct push_constants constants = {

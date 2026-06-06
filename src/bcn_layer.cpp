@@ -659,6 +659,13 @@ BCnLayer_CreateDevice(VkPhysicalDevice physicalDevice,
     if (!transcode_to_etc2 && !transcode_to_astc) { // transcoding is mutually exclusive with use_image_view
         device->use_image_view = getenv("BCN_COMPUTE_IMAGE_VIEW") ? atoi(getenv("BCN_COMPUTE_IMAGE_VIEW")) : 1;
     }
+
+    if (const char* dump_buffers_path = std::getenv("BCN_DUMP_BUFFERS_PATH")) {
+        device->dump_buffers_path = dump_buffers_path;
+    } else {
+        device->dump_buffers_path = "";
+    }
+
    
     result = create_bcn_compute_pipelines(device.get());
     if (result != VK_SUCCESS) {

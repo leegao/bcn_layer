@@ -1,11 +1,13 @@
 #include "buffer.hpp"
 
 #include "bcn_layer.hpp"
+#include <atomic>
 
 std::unordered_map<VkBuffer, std::unique_ptr<struct buffer>> buffersMap;
+std::atomic<int> bufferIdCounter;
 
 std::unique_ptr<struct buffer>
-create_staging_buffer(struct device *dev, int size) 
+create_staging_buffer(struct device *dev, int size, VkFormat format)
 {
 	VkResult result;
 	VkBuffer buffer;
@@ -57,12 +59,16 @@ create_staging_buffer(struct device *dev, int size)
 		return NULL;
 	}
 
+	int id = bufferIdCounter.fetch_add(1);
 	auto staging_buf = std::make_unique<struct buffer>();
 	staging_buf->handle = buffer;
 	staging_buf->memory = memory;
 	staging_buf->offset = 0;
 	staging_buf->device = dev;
 	staging_buf->alloc = nullptr;
+	staging_buf->size = size;
+	staging_buf->format = format;
+	staging_buf->id = id;
 
 	return staging_buf;
 }
@@ -102,11 +108,14 @@ BCnLayer_CreateBuffer(VkDevice device,
 		return result;
 	}
 
+	int id = bufferIdCounter.fetch_add(1);
 	auto buf = std::make_unique<struct buffer>();
 	buf->handle = *pBuffer;
 	buf->size = pCreateInfo->size;
 	buf->device = dev;
 	buf->alloc = pAllocator;
+	buf->format = VK_FORMAT_UNDEFINED;
+	buf->id = id;
 
 	{
 		scoped_lock l(global_lock);

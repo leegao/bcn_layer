@@ -25,6 +25,7 @@ public:
     void AddStagingBuffer(std::unique_ptr<struct buffer> buf) { stagingBuffers.push_back(std::move(buf)); }
     void AddStagingImageView(VkImageView view) { stagingImageViews.push_back(view); }
     void AddDescriptorSet(VkDescriptorPool pool, VkDescriptorSet set) { descriptorSets.push_back({ pool, set }); }
+    int Size() const { return stagingBuffers.size(); }
     
 private:
     VkFence completed = VK_NULL_HANDLE;
