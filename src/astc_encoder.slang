@@ -460,7 +460,7 @@ void main(uint3 gl_GlobalInvocationID: SV_DispatchThreadID) {
       r = (tex_element >> 0) & 0xFFu;
 
       pixels[y * 4 + x] = uint4(r, g, b, a);
-      if (a < 0)
+      if (a < 255)
         use_alpha = true;
     }
   }
