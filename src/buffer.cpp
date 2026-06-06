@@ -7,7 +7,7 @@ std::unordered_map<VkBuffer, std::unique_ptr<struct buffer>> buffersMap;
 std::atomic<int> bufferIdCounter;
 
 std::unique_ptr<struct buffer>
-create_staging_buffer(struct device *dev, int size, VkFormat format)
+create_staging_buffer(struct device *dev, int size, VkFormat format, int width, int height)
 {
 	VkResult result;
 	VkBuffer buffer;
@@ -68,6 +68,8 @@ create_staging_buffer(struct device *dev, int size, VkFormat format)
 	staging_buf->alloc = nullptr;
 	staging_buf->size = size;
 	staging_buf->format = format;
+	staging_buf->width = width;
+	staging_buf->height = height;
 	staging_buf->id = id;
 
 	return staging_buf;

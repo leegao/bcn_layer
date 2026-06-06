@@ -52,6 +52,7 @@ void StagingResources::Cleanup() {
         it = stagingBuffers.erase(it);
         if (!buf) continue;
 
+// #define DEBUG_BCN
 #ifdef DEBUG_BCN
         Logger::log("info", "  Peeking into buffer %p, memory %p, format %d", buf->handle, buf->memory, buf->format);
         uint32_t* mappedData;
@@ -75,7 +76,7 @@ void StagingResources::Cleanup() {
             std::stringstream ss;
             std::string id_str = std::to_string(buf->id);
             id_str = std::string(5 - id_str.length(), '0') + id_str;
-            ss << dev->dump_buffers_path << "/" << id_str << "_fmt_" << buf->format << ".bin";
+            ss << dev->dump_buffers_path << "/" << id_str << "_fmt_" << buf->format << "_" << buf->width << "x" << buf->height << ".bin";
             std::ofstream out(ss.str(), std::ios::out | std::ios::binary);
             out.write(reinterpret_cast<const char*>(mappedData), buf->size);
             out.close();

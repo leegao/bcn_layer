@@ -112,7 +112,7 @@ BCnLayer_CmdCopyBufferToImage(VkCommandBuffer commandBuffer,
         	int h = copy_region.imageExtent.height;
             int d = copy_region.imageExtent.depth;
         	int size = w * h * d * texel_size;
-        	auto staging_buf = create_staging_buffer(dev, size, target_format);
+        	auto staging_buf = create_staging_buffer(dev, size, target_format, w, h);
 
         	decompress_bcn_compute(dev, commandBuffer, format, &copy_region, buf, staging_buf.get(), img, dstImageLayout);
         	
