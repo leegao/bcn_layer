@@ -46,7 +46,18 @@ void StagingResources::Cleanup() {
         completed = VK_NULL_HANDLE;
         semaphore = VK_NULL_HANDLE;
     }
-    
+
+// #define PROFILE
+#ifdef PROFILE
+    auto now = std::chrono::system_clock::now();
+    auto timestamp = std::chrono::time_point_cast<std::chrono::milliseconds>(now).time_since_epoch().count();
+    auto uncompressed_size = MemoryUsage(VK_FORMAT_R8G8B8A8_UNORM) + MemoryUsage(VK_FORMAT_R16G16B16A16_SFLOAT);
+    double memory_usage_mb = ((double)uncompressed_size) / 1024 / 1024;
+    Logger::log("info", "    cleaning up batch %d with %d buffers (%d MB), took %d ms, throughput = %0.2f MB/s", 
+        id, Size(), MemoryUsage() / 1024 / 1024, timestamp - this->timestamp, 
+        memory_usage_mb / (timestamp - this->timestamp) * 1000);
+#endif
+
     for (auto it = stagingBuffers.begin(); it != stagingBuffers.end();) {
         auto buf = std::move(*it);
         it = stagingBuffers.erase(it);

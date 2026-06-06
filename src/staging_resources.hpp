@@ -3,6 +3,7 @@
 
 #include "buffer.hpp"
 
+#include <cstdint>
 #include <vulkan/vulkan.h>
 #include <vector>
 
@@ -12,10 +13,6 @@ struct StagingResources {
 public:
     explicit StagingResources(VkDevice device): device(device) {}
     ~StagingResources();
-    StagingResources(StagingResources&&) noexcept = default;
-    StagingResources& operator=(StagingResources&&) noexcept = default;
-    StagingResources(const StagingResources&) = default;
-    StagingResources& operator=(const StagingResources&) = default;
 
     std::pair<VkSemaphore, VkFence> MakeFence();
     bool IsCompleted() const { return has_completed; }
@@ -26,6 +23,18 @@ public:
     void AddStagingImageView(VkImageView view) { stagingImageViews.push_back(view); }
     void AddDescriptorSet(VkDescriptorPool pool, VkDescriptorSet set) { descriptorSets.push_back({ pool, set }); }
     int Size() const { return stagingBuffers.size(); }
+    int MemoryUsage(VkFormat format = VK_FORMAT_UNDEFINED) const { 
+        int usage = 0;
+        for (const auto& buf : stagingBuffers) {
+            if (format == VK_FORMAT_UNDEFINED || buf->format == format) {
+                usage += buf->size;
+            }
+        }
+        return usage;
+    }
+    
+    int id = 0;
+    int64_t timestamp = 0;
     
 private:
     VkFence completed = VK_NULL_HANDLE;

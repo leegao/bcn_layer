@@ -1,6 +1,7 @@
 #include "queue.hpp"
 #include "command_buffer.hpp"
 #include "staging_resources.hpp"
+#include <chrono>
 
 std::unordered_map<VkQueue, std::shared_ptr<struct queue>> queuesMap;
 
@@ -118,6 +119,8 @@ BCnLayer_GetDeviceQueue(VkDevice device,
 	queuesMap[*pQueue] = queue;
 }
 
+static std::atomic_int kStagingResourceCounter;
+
 VK_LAYER_EXPORT VkResult VKAPI_CALL
 BCnLayer_QueueSubmit(VkQueue queue,
 					 uint32_t submitInfoCount,
@@ -146,6 +149,9 @@ BCnLayer_QueueSubmit(VkQueue queue,
                     // Signal the temp semaphore
                     updaters[i].addSignalSemaphore(staging_fence.first);
                     staging_fences.push_back(staging_fence);
+         			stagingResources->id = kStagingResourceCounter++;
+                    auto now = std::chrono::system_clock::now();
+                    stagingResources->timestamp = std::chrono::time_point_cast<std::chrono::milliseconds>(now).time_since_epoch().count();
                     cb->device->stagingResourcesQueue.push_back(std::move(stagingResources));
     			}
     		}
@@ -204,6 +210,9 @@ BCnLayer_QueueSubmit2(VkQueue queue,
                     // Signal the temp semaphore
                     updaters[i].addSignalSemaphore(staging_fence.first);
                     staging_fences.push_back(staging_fence);
+         			stagingResources->id = kStagingResourceCounter++;
+                    auto now = std::chrono::system_clock::now();
+                    stagingResources->timestamp = std::chrono::time_point_cast<std::chrono::milliseconds>(now).time_since_epoch().count();
                     cb->device->stagingResourcesQueue.push_back(std::move(stagingResources));
     			}
     		}
