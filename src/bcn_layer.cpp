@@ -623,6 +623,7 @@ BCnLayer_CreateDevice(VkPhysicalDevice physicalDevice,
     table.MapMemory = (PFN_vkMapMemory)gdpa(*pDevice, "vkMapMemory");
     table.UnmapMemory = (PFN_vkUnmapMemory)gdpa(*pDevice, "vkUnmapMemory");
     table.InvalidateMappedMemoryRanges = (PFN_vkInvalidateMappedMemoryRanges)gdpa(*pDevice, "vkInvalidateMappedMemoryRanges");
+    table.GetBufferMemoryRequirements = (PFN_vkGetBufferMemoryRequirements)gdpa(*pDevice, "vkGetBufferMemoryRequirements");
 
     uint32_t queueCount;
     VkQueue queue;

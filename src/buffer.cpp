@@ -14,7 +14,17 @@ create_staging_buffer(struct device *dev, int size, VkFormat format, int width, 
 	VkDeviceMemory memory;
 	VkLayerDispatchTable table = dev->table;
 	VkDevice device = dev->handle;
+	uint align = 15;
+	if (format == VK_FORMAT_R8G8B8A8_UNORM) {
+	    align = 63;
+	} else if (format == VK_FORMAT_R16G16B16A16_SFLOAT) {
+	    align = 127;
+	}
 
+	// [info]: buffer handle: 0xd2a0000000d2a, size: 64, mem size: 64, fmt: 97, width: 2, height: 2
+	// The descriptor buffer (VkBuffer 0xd2a0000000d2a) size is 64 bytes, 64 bytes were bound, 
+	// and the highest out of bounds access was at [79] bytes
+	size = (size + align) & ~align;
 	VkBufferCreateInfo buffer_create_info = {
 		.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
 		.pNext = nullptr,
@@ -32,20 +42,15 @@ create_staging_buffer(struct device *dev, int size, VkFormat format, int width, 
 		Logger::log("error", "Failed to create staging buffer, res %d", result);
 		return NULL;
 	}
-/*
-	VkMemoryDedicatedAllocateInfo buffer_allocate_info = {
-		.sType = VK_STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO,
-		.pNext = nullptr,
-		.image = VK_NULL_HANDLE,
-		.buffer = buffer
-	};
-*/
-	VkMemoryAllocateInfo allocate_info = {
-		.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-		.pNext = nullptr,
-		.allocationSize = static_cast<VkDeviceSize>(size),
-		.memoryTypeIndex = dev->memoryIndex
-	};
+	VkMemoryRequirements mem_reqs;
+    table.GetBufferMemoryRequirements(device, buffer, &mem_reqs);
+    VkMemoryAllocateInfo allocate_info = {
+        .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+        .pNext = nullptr,
+        .allocationSize = mem_reqs.size,
+        .memoryTypeIndex = dev->memoryIndex
+    };
+
 
 	result = table.AllocateMemory(device, &allocate_info, nullptr, &memory);
 	if (result != VK_SUCCESS) {
