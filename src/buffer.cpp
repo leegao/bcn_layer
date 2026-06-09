@@ -5,7 +5,7 @@
 std::unordered_map<VkBuffer, std::unique_ptr<struct buffer>> buffersMap;
 
 std::unique_ptr<struct buffer>
-create_staging_buffer(struct device *dev, int size) 
+create_staging_buffer(struct device *dev, int size)
 {
 	VkResult result;
 	VkBuffer buffer;
@@ -23,25 +23,19 @@ create_staging_buffer(struct device *dev, int size)
 		.queueFamilyIndexCount = 0,
 		.pQueueFamilyIndices = nullptr
 	};
-	
+
 	result = table.CreateBuffer(device, &buffer_create_info, nullptr, &buffer);
 
 	if (result != VK_SUCCESS) {
 		Logger::log("error", "Failed to create staging buffer, res %d", result);
 		return NULL;
 	}
-/*
-	VkMemoryDedicatedAllocateInfo buffer_allocate_info = {
-		.sType = VK_STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO,
-		.pNext = nullptr,
-		.image = VK_NULL_HANDLE,
-		.buffer = buffer
-	};
-*/
+	VkMemoryRequirements mem_reqs;
+    table.GetBufferMemoryRequirements(device, buffer, &mem_reqs);
 	VkMemoryAllocateInfo allocate_info = {
 		.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
 		.pNext = nullptr,
-		.allocationSize = static_cast<VkDeviceSize>(size),
+		.allocationSize = mem_reqs.size,
 		.memoryTypeIndex = dev->memoryIndex
 	};
 
@@ -94,7 +88,7 @@ BCnLayer_CreateBuffer(VkDevice device,
 
 	table = dev->table;
 
-	create_info.usage |= VK_BUFFER_USAGE_STORAGE_BUFFER_BIT; 
+	create_info.usage |= VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
 
 	result = table.CreateBuffer(device, &create_info, pAllocator, pBuffer);
 	if (result != VK_SUCCESS) {
@@ -112,7 +106,7 @@ BCnLayer_CreateBuffer(VkDevice device,
 		scoped_lock l(global_lock);
 		buffersMap[*pBuffer] = std::move(buf);
 	}
-	
+
 	return VK_SUCCESS;
 }
 

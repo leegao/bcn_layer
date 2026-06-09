@@ -207,7 +207,7 @@ BCnLayer_EnumerateDeviceExtensionProperties(VkPhysicalDevice physicalDevice,
     auto& dispatch = instanceDispatch[GetKey(physicalDevice)];
     VkResult result = dispatch.EnumerateDeviceExtensionProperties(physicalDevice, pLayerName, pPropertyCount, pProperties);
 
-    Logger::log("info", "BCnLayer_EnumerateDeviceExtensionProperties: %s", result == VK_SUCCESS ? "VK_SUCCESS" : "VK_INCOMPLETE");
+    // Logger::log("info", "BCnLayer_EnumerateDeviceExtensionProperties: %s", result == VK_SUCCESS ? "VK_SUCCESS" : "VK_INCOMPLETE");
 
     // Layers should only inject extensions when pLayerName is NULL
     if (pLayerName) return result;

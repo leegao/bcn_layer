@@ -815,7 +815,7 @@ create_etc2_compute_pipelines(struct device *dev)
 
 VkResult create_astc_compute_pipelines(struct device *dev)
 {
-    Logger::log("info", "create_astc_compute_pipelines");
+    // Logger::log("info", "create_astc_compute_pipelines");
     VkResult result;
     VkLayerDispatchTable table = dev->table;
     VkDevice device = dev->handle;
@@ -874,7 +874,7 @@ VkResult create_astc_compute_pipelines(struct device *dev)
     auto &luts = get_astc_luts();
     auto &table_4x4 = luts.get_partition_table(4, 4);
 
-    Logger::log("info", "create_astc_compute_pipelines2");
+    // Logger::log("info", "create_astc_compute_pipelines2");
     dev->astcLutBuffers[0] = create_and_upload_ssbo(dev, sizeof(luts.color_endpoint.lut), luts.color_endpoint.lut);
     dev->astcLutBuffers[1] = create_and_upload_ssbo(dev, luts.color_endpoint.unquant_offset, luts.color_endpoint.unquant_lut);
     dev->astcLutBuffers[2] = create_and_upload_ssbo(dev, sizeof(luts.weights.lut), luts.weights.lut);
