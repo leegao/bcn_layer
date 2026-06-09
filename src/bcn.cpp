@@ -593,14 +593,14 @@ encode_etc2_compute(struct device *dev,
         .dstAccessMask = VK_ACCESS_SHADER_READ_BIT,
         .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
         .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .buffer = stagingBuffer->handle,
+        .buffer = decodedBuffer->handle,
         .offset = 0,
         .size = VK_WHOLE_SIZE
     };
 
     table.CmdPipelineBarrier(
         commandbuffer,
-        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
         0,
         0, NULL,
         1, &bufferBarrier,
@@ -728,14 +728,14 @@ encode_astc_compute(struct device *dev,
         .dstAccessMask = VK_ACCESS_SHADER_READ_BIT,
         .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
         .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .buffer = stagingBuffer->handle,
+        .buffer = decodedBuffer->handle,
         .offset = 0,
         .size = VK_WHOLE_SIZE
     };
 
     table.CmdPipelineBarrier(
         commandbuffer,
-        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
         0,
         0, NULL,
         1, &bufferBarrier,
