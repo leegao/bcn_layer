@@ -1,0 +1,86 @@
+name: Build Android ARM64 Library
+run-name: ${{ github.actor }} is building libbcn_layer.so
+
+on:
+    push:
+        branches: ["**"]
+    pull_request:
+        branches: ["**"]
+
+jobs:
+    build:
+        runs-on: ubuntu-latest
+        container:
+            image: alpine:latest
+
+        steps:
+            - name: Install System Dependencies
+              run: |
+                  apk update && apk add --no-cache \
+                    bash \
+                    curl \
+                    unzip \
+                    cmake \
+                    make \
+                    g++ \
+                    openjdk17-jre-headless \
+                    glslang \
+                    xxd \
+                    nodejs \
+                    libc6-compat \
+                    gcompat \
+                    build-base \
+                    shaderc \
+                    vulkan-headers \
+                    vulkan-loader-dev
+
+            - name: Install Slang Compiler
+              run: |
+                  curl -L https://github.com/shader-slang/slang/releases/download/v2026.10.2/slang-2026.10.2-linux-x86_64.tar.gz -o slang.tar.gz
+                  mkdir -p slang_extracted
+                  tar -xzf slang.tar.gz -C slang_extracted
+                  ls slang_extracted/
+                  cp slang_extracted/bin/slangc /usr/local/bin/slangc
+                  cp slang_extracted/lib/*.so* /usr/local/lib/
+                  ldconfig /usr/local/lib
+                  rm -rf slang.tar.gz slang_extracted
+
+            - name: Install Android NDK Minimal
+              run: |
+                  curl -L https://dl.google.com/android/repository/android-ndk-r26b-linux.zip -o ndk.zip
+                  unzip -q ndk.zip -d /opt
+                  rm ndk.zip
+                  ls /opt/
+                  echo "/opt/android-ndk-r26b"
+                  ls /opt/android-ndk-r26b
+                  echo "/opt/android-ndk-r26b/build"
+                  ls /opt/android-ndk-r26b/build
+                  echo "/opt/android-ndk-r26b/build/cmake"
+                  ls /opt/android-ndk-r26b/build/cmake
+                  echo "/opt/android-ndk-r26b/toolchains/llvm/prebuilt/linux-x86_64/bin/clang++"
+                  ls /opt/android-ndk-r26b/toolchains/llvm/prebuilt/linux-x86_64/bin/
+                  echo "ANDROID_NDK_HOME=/opt/android-ndk-r26b" >> "$GITHUB_ENV"
+
+            - name: Checkout source code
+              uses: actions/checkout@v6
+
+            - name: Configure CMake for Android ARM64
+              run: |
+                  cmake -B build \
+                    -DCMAKE_SYSTEM_NAME=Android \
+                    -DANDROID_PLATFORM=26 \
+                    -DANDROID_ABI=arm64-v8a \
+                    -DANDROID_TOOLCHAIN=clang \
+                    -DANDROID_STL=c++_static \
+                    -DCMAKE_BUILD_TYPE=Release \
+                    -DCMAKE_TOOLCHAIN_FILE=/opt/android-ndk-r26b/build/cmake/android.toolchain.cmake \
+                    -DFORCE_GLSL=OFF
+
+            - name: Build bcn_layer for Android ARM64
+              run: cmake --build build --config Release --target bcn_layer
+
+            - name: Upload libbcn_layer.so for Android ARM64
+              uses: actions/upload-artifact@v6
+              with:
+                  name: libbcn_layer.so
+                  path: build/libbcn_layer.so

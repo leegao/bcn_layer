@@ -39,7 +39,7 @@ foreach(SHADER ${SHADER_NAMES})
 
     add_custom_command(
         OUTPUT ${SPV_OUT}
-        COMMAND glslc ${COMP_SRC} -o ${SPV_OUT}
+        COMMAND glslc -c ${COMP_SRC} -o ${SPV_OUT}
         DEPENDS ${COMP_SRC}
         COMMENT "Compiling to SPIR-V: ${SHADER}.spv"
     )
@@ -82,7 +82,7 @@ endif()
 
 add_custom_command(
     OUTPUT ${ETC2_SPV}
-    COMMAND glslc -O ${ETC2_COMP} -o ${ETC2_SPV}
+    COMMAND glslc -O -c ${ETC2_COMP} -o ${ETC2_SPV}
     DEPENDS ${ETC2_COMP}
     COMMENT "Compiling ${ETC2_COMP}"
 )
@@ -115,7 +115,7 @@ endif()
 
 add_custom_command(
     OUTPUT ${ASTC_SPV}
-    COMMAND glslc -O ${ASTC_COMP} -o ${ASTC_SPV}
+    COMMAND glslc -O -c ${ASTC_COMP} -o ${ASTC_SPV}
     DEPENDS ${ASTC_COMP}
     COMMENT "Compiling ${ASTC_SPV}"
 )
