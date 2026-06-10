@@ -11,56 +11,42 @@ on:
 jobs:
     build:
         runs-on: ubuntu-latest
-        container:
-            image: alpine:latest
 
         steps:
             - name: Install System Dependencies
               run: |
-                  apk update && apk add --no-cache \
-                    bash \
-                    curl \
-                    unzip \
-                    cmake \
-                    make \
-                    g++ \
-                    openjdk17-jre-headless \
-                    glslang \
+                  sudo apt-get update 
+                  sudo apt-get install -y --no-install-recommends \
+                    openjdk-17-jre-headless \
+                    glslang-tools \
+                    glslc \
                     xxd \
-                    nodejs \
-                    libc6-compat \
-                    gcompat \
-                    build-base \
-                    shaderc \
-                    vulkan-headers \
-                    vulkan-loader-dev
+                    libvulkan-dev \
+                    glibc-source
 
             - name: Install Slang Compiler
               run: |
                   curl -L https://github.com/shader-slang/slang/releases/download/v2026.10.2/slang-2026.10.2-linux-x86_64.tar.gz -o slang.tar.gz
                   mkdir -p slang_extracted
                   tar -xzf slang.tar.gz -C slang_extracted
-                  ls slang_extracted/
-                  cp slang_extracted/bin/slangc /usr/local/bin/slangc
-                  cp slang_extracted/lib/*.so* /usr/local/lib/
-                  ldconfig /usr/local/lib
+                  sudo cp slang_extracted/bin/slangc /usr/local/bin/
+                  sudo cp slang_extracted/lib/*.so* /usr/local/lib/
+                  sudo ldconfig /usr/local/lib
                   rm -rf slang.tar.gz slang_extracted
 
-            - name: Install Android NDK Minimal
+            - name: Install Mali Offline Compiler
               run: |
-                  curl -L https://dl.google.com/android/repository/android-ndk-r26b-linux.zip -o ndk.zip
-                  unzip -q ndk.zip -d /opt
-                  rm ndk.zip
-                  ls /opt/
-                  echo "/opt/android-ndk-r26b"
-                  ls /opt/android-ndk-r26b
-                  echo "/opt/android-ndk-r26b/build"
-                  ls /opt/android-ndk-r26b/build
-                  echo "/opt/android-ndk-r26b/build/cmake"
-                  ls /opt/android-ndk-r26b/build/cmake
-                  echo "/opt/android-ndk-r26b/toolchains/llvm/prebuilt/linux-x86_64/bin/clang++"
-                  ls /opt/android-ndk-r26b/toolchains/llvm/prebuilt/linux-x86_64/bin/
-                  echo "ANDROID_NDK_HOME=/opt/android-ndk-r26b" >> "$GITHUB_ENV"
+                  curl -L https://github.com/leegao/bcn_layer/releases/download/MOC/moc.zip -o moc.zip
+                  sudo mkdir -p /opt/moc
+                  sudo unzip moc.zip -d /opt/moc
+                  ls /opt/moc
+
+            # - name: Install Android NDK Minimal
+            #   run: |
+            #       curl -L https://dl.google.com/android/repository/android-ndk-r26b-linux.zip -o ndk.zip
+            #       unzip -q ndk.zip -d /opt
+            #       rm ndk.zip
+            #       echo "ANDROID_NDK_HOME=/opt/android-ndk-r26b" >> "$GITHUB_ENV"
 
             - name: Checkout source code
               uses: actions/checkout@v6
@@ -74,7 +60,7 @@ jobs:
                     -DANDROID_TOOLCHAIN=clang \
                     -DANDROID_STL=c++_static \
                     -DCMAKE_BUILD_TYPE=Release \
-                    -DCMAKE_TOOLCHAIN_FILE=/opt/android-ndk-r26b/build/cmake/android.toolchain.cmake \
+                    -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_LATEST_HOME/build/cmake/android.toolchain.cmake \
                     -DFORCE_GLSL=OFF
 
             - name: Build bcn_layer for Android ARM64
@@ -91,3 +77,10 @@ jobs:
               with:
                   name: astc_encoder
                   path: build/src/astc_encoder.*
+
+            - name: Run malioc on astc_encoder.spv
+              run: |
+                  /opt/moc/mali_offline_compiler/malioc -c Mali-G615 -d --vulkan build/src/astc_encoder.spv | tee malioc_output.txt
+                  echo "\`\`\`text" >> $GITHUB_STEP_SUMMARY
+                  cat malioc_output.txt >> $GITHUB_STEP_SUMMARY
+                  echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
