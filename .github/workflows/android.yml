@@ -4,6 +4,7 @@ run-name: ${{ github.actor }} is building libbcn_layer.so
 on:
     push:
         branches: ["**"]
+        tags: ["*"]
     pull_request:
         branches: ["**"]
 
