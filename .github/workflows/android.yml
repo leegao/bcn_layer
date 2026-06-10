@@ -85,3 +85,9 @@ jobs:
               with:
                   name: libbcn_layer.so
                   path: build/libbcn_layer.so
+
+            - name: Upload astc_encoder
+              uses: actions/upload-artifact@v6
+              with:
+                  name: astc_encoder
+                  path: build/src/astc_encoder.*
