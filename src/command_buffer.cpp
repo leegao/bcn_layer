@@ -2,7 +2,6 @@
 #include "bcn_layer.hpp"
 #include "image.hpp"
 #include "bcn.hpp"
-#include <vulkan/vulkan_core.h>
 
 std::unordered_map<VkCommandBuffer, std::shared_ptr<struct command_buffer>> commandBuffersMap;
 
