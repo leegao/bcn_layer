@@ -27,11 +27,21 @@ BCnLayer_CreateImage(VkDevice device,
 		return VK_ERROR_INITIALIZATION_FAILED;
 
 	table = dev->table;
-
+	bool transcode_to_etc2 = false;
+	bool transcode_to_astc = false;
 	if (is_supported_bcn_format(dev, pCreateInfo->format)) {
+	    transcode_to_etc2 = dev->transcode_to_etc2 && pCreateInfo->imageType != VK_IMAGE_TYPE_3D;
+		transcode_to_astc = !transcode_to_etc2 
+		                    && dev->transcode_to_astc && pCreateInfo->imageType != VK_IMAGE_TYPE_3D;
 	    auto target_format = get_format_for_bcn(pCreateInfo->format);
+		// TODO: Texture3D not supported for recompression at the moment
+		if (transcode_to_etc2)
+			target_format = get_format_for_bcn_to_etc2(dev, pCreateInfo->format);
+		else if (transcode_to_astc)
+			target_format = get_format_for_bcn_to_astc(dev, pCreateInfo->format);
 	    create_info.format = target_format;
-	    create_info.usage |= VK_IMAGE_USAGE_STORAGE_BIT;
+		if (!transcode_to_etc2 && !transcode_to_astc)
+	        create_info.usage |= VK_IMAGE_USAGE_STORAGE_BIT;
 	    create_info.flags &= ~VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT;
 
         // err:   vkCreateImage(): 
@@ -68,6 +78,8 @@ BCnLayer_CreateImage(VkDevice device,
     image->format = pCreateInfo->format;
     image->device = dev;
     image->alloc = pAllocator;
+    image->transcode_to_etc2 = transcode_to_etc2;
+    image->transcode_to_astc = transcode_to_astc;
 
     {
     	scoped_lock l(global_lock);
@@ -95,6 +107,11 @@ BCnLayer_CreateImageView(VkDevice device,
 
 	if (is_supported_bcn_format(dev, pCreateInfo->format)) {
 		create_info.format = get_format_for_bcn(pCreateInfo->format);
+		struct image *img = find_image(pCreateInfo->image);
+		if (img && img->transcode_to_etc2)
+			create_info.format = get_format_for_bcn_to_etc2(dev, pCreateInfo->format);
+		else if (img && img->transcode_to_astc)
+			create_info.format = get_format_for_bcn_to_astc(dev, pCreateInfo->format);
 	}
 
 	result = table.CreateImageView(device, &create_info, pAllocator, pImageView);

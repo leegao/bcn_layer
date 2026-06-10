@@ -3,6 +3,8 @@
 #include "bcn_layer.hpp"
 #include "buffer.hpp"
 #include <cstdint>
+#include <fstream>
+#include <sstream>
 
 std::pair<VkSemaphore, VkFence> StagingResources::MakeFence() {
     auto *dev = get_device(device);
@@ -44,16 +46,28 @@ void StagingResources::Cleanup() {
         completed = VK_NULL_HANDLE;
         semaphore = VK_NULL_HANDLE;
     }
-    
+
+    if (dev->profile_transfers) {
+        auto now = std::chrono::system_clock::now();
+        auto timestamp = std::chrono::time_point_cast<std::chrono::milliseconds>(now).time_since_epoch().count();
+        auto uncompressed_size = MemoryUsage(VK_FORMAT_R8G8B8A8_UNORM) + MemoryUsage(VK_FORMAT_R16G16B16A16_SFLOAT);
+        double memory_usage_mb = ((double)uncompressed_size) / 1024 / 1024;
+        auto total_size = MemoryUsage();
+        Logger::log("info", "    cleaning up batch %d with %d buffers (%d MB raw, %d MB recompressed), took %d ms, throughput = %0.2f MB/s", 
+            id, Size(), uncompressed_size / 1024 / 1024, (total_size - uncompressed_size) / 1024 / 1024, timestamp - this->timestamp, 
+            memory_usage_mb / (timestamp - this->timestamp) * 1000);
+    }
+
     for (auto it = stagingBuffers.begin(); it != stagingBuffers.end();) {
         auto buf = std::move(*it);
         it = stagingBuffers.erase(it);
         if (!buf) continue;
 
+// #define DEBUG_BCN
 #ifdef DEBUG_BCN
-        Logger::log("info", "  Peeking into buffer %p, memory %p", buf->handle, buf->memory);
+        Logger::log("info", "  Peeking into buffer %p, memory %p, format %d", buf->handle, buf->memory, buf->format);
         uint32_t* mappedData;
-        VkResult result = dev->table.MapMemory(device, buf->memory, 0, buf->size, 0, (void **) &mappedData);
+        VkResult result = dev->table.MapMemory(device, buf->memory, 0, VK_WHOLE_SIZE, 0, (void **) &mappedData);
         if (result != VK_SUCCESS) {
             Logger::log("error", "    MapMemory failed: %d", result);
         }
@@ -64,10 +78,20 @@ void StagingResources::Cleanup() {
             .size = VK_WHOLE_SIZE,
         };
         dev->table.InvalidateMappedMemoryRanges(device, 1, &mapped_memory_range);
-        Logger::log("info", "    StagingBuffer %p[0] = %x", buf->handle, mappedData[0]);
-        Logger::log("info", "    StagingBuffer %p[1] = %x", buf->handle, mappedData[1]);
-        Logger::log("info", "    StagingBuffer %p[2] = %x", buf->handle, mappedData[2]);
-        Logger::log("info", "    StagingBuffer %p[3] = %x", buf->handle, mappedData[3]);
+        Logger::log("info", "    StagingBuffer %p[0] = 0x%x, 0x%x, 0x%x, 0x%x", buf->handle, mappedData[0], mappedData[1], mappedData[2], mappedData[3]);
+        Logger::log("info", "    StagingBuffer %p[1] = 0x%x, 0x%x, 0x%x, 0x%x", buf->handle, mappedData[4], mappedData[5], mappedData[6], mappedData[7]);
+        Logger::log("info", "    StagingBuffer %p[2] = 0x%x, 0x%x, 0x%x, 0x%x", buf->handle, mappedData[8], mappedData[9], mappedData[10], mappedData[11]);
+        Logger::log("info", "    StagingBuffer %p[3] = 0x%x, 0x%x, 0x%x, 0x%x", buf->handle, mappedData[12], mappedData[13], mappedData[14], mappedData[15]);
+
+        if (!dev->dump_buffers_path.empty()) {
+            std::stringstream ss;
+            std::string id_str = std::to_string(buf->id);
+            id_str = std::string(5 - id_str.length(), '0') + id_str;
+            ss << dev->dump_buffers_path << "/" << id_str << "_fmt_" << buf->format << "_" << buf->width << "x" << buf->height << ".bin";
+            std::ofstream out(ss.str(), std::ios::out | std::ios::binary);
+            out.write(reinterpret_cast<const char*>(mappedData), buf->size);
+            out.close();
+        }
         dev->table.UnmapMemory(device, buf->memory);
 #endif
 

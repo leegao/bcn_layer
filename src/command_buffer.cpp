@@ -89,7 +89,9 @@ BCnLayer_CmdCopyBufferToImage(VkCommandBuffer commandBuffer,
 	struct image *img = find_image(dstImage);
 	struct buffer *buf = find_buffer(srcBuffer);
 	VkFormat format = img->format;
-	int texel_size = is_bc6(format) ? 8 : 4;
+	int texel_size = (img->transcode_to_etc2 || img->transcode_to_astc) ? 1 : is_bc6(format) ? 8 : 4;
+	VkFormat target_format = img->transcode_to_etc2 ? get_format_for_bcn_to_etc2(dev, format)
+		: img->transcode_to_astc ? get_format_for_bcn_to_astc(dev, format) : get_format_for_bcn(format);
 
 	table = dev->table;
 	
@@ -109,7 +111,7 @@ BCnLayer_CmdCopyBufferToImage(VkCommandBuffer commandBuffer,
         	int h = copy_region.imageExtent.height;
             int d = copy_region.imageExtent.depth;
         	int size = w * h * d * texel_size;
-        	auto staging_buf = create_staging_buffer(dev, size);
+        	auto staging_buf = create_staging_buffer(dev, size, target_format, w, h);
 
         	decompress_bcn_compute(dev, commandBuffer, format, &copy_region, buf, staging_buf.get(), img, dstImageLayout);
         	

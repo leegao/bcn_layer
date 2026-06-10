@@ -97,11 +97,23 @@ struct device {
 	VkPipeline rgtcPipeline;
 	VkPipeline bc6Pipeline;
 	VkPipeline bc7Pipeline;
+	VkPipeline etc2Pipeline;
+	VkPipeline astcPipeline;
 	VkPipelineLayout layout;
+	VkPipelineLayout etc2Layout;
+	VkPipelineLayout astcLayout;
 	VkQueue queue;
 	uint32_t memoryIndex;
-	int use_image_view;
+	int use_image_view = 0;
+	int transcode_to_etc1 = 0;
+	int transcode_to_etc2 = 0;
+	int transcode_to_astc = 0;
+	int profile_transfers = 0;
 	VkDescriptorSetLayout setLayout;
+	VkDescriptorSetLayout etc2SetLayout;
+	VkDescriptorSetLayout astcSetLayout;
+	std::unique_ptr<struct buffer> lut2Buffer;
+	std::unique_ptr<struct buffer> astc2pLutBuffer;
 	const VkAllocationCallbacks *alloc;
 	std::unique_ptr<SyncPool> syncPool;
 	std::unique_ptr<DescriptorSetAllocator> descriptorSetAllocator;
@@ -109,6 +121,7 @@ struct device {
 	std::condition_variable hasCleanupWork;
 	std::thread finalizer_thread;
     std::atomic_bool stop_thread {false};
+    std::string dump_buffers_path;
 };
 
 struct device *get_device(VkDevice);

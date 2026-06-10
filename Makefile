@@ -50,13 +50,26 @@ OUTPUT := libbcn_layer.so
 
 all : $(OUTPUT)
 
+# Requires slangc
+SLANGC_EXISTS := $(shell command -v slangc 2> /dev/null)
+
+src/%.comp : src/%.slang
+ifdef SLANGC_EXISTS
+	echo "// AUTO-GENERATED - DO NOT EDIT, see " $< > $@
+	slangc $< -target glsl -line-directive-mode none -D DISABLE_RECONSTRUCTION >> $@
+else
+	@echo "ERROR: slangc not found but $< may have been changed."
+	@echo "       Please run build_slang_shader.sh manually to ensure consistency"
+	touch $@ # trigger recompile of the cached .comp anyways
+endif
+
 src/%.spv : src/%.comp
 	glslc $< -o $@
 
 src/%_spv.h : src/%.spv
 	cd src && xxd -i $(notdir $<) > $(notdir $@)
-	
-$(OUTPUT) : $(SOURCES) $(SPIRV_HEADERS) $(HEADERS)
+
+$(OUTPUT) : $(SOURCES) $(SPIRV_HEADERS) $(HEADERS) src/etc2_encode_spv.h src/etc2_encode.comp src/astc_encoder_spv.h src/astc_encoder.comp
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) $(SOURCES) -o $(OUTPUT)
 
 .PHONY: clean install
@@ -71,3 +84,5 @@ clean:
 	rm -f $(OUTPUT)
 	rm -f $(SPIRV_SHADERS)
 	rm -f $(SPIRV_HEADERS)
+	rm -f src/etc2_encode_spv.h
+	rm -f src/astc_encoder_spv.h

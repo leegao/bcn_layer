@@ -8,6 +8,8 @@ src/bc6_spv.h
 src/bc6_iv_spv.h
 src/bc7_spv.h
 src/bc7_iv_spv.h
+src/etc2_encode_spv.h
+src/astc_encode_spv.h
 build*/
 compile*.sh
 demo.sh

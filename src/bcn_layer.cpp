@@ -536,12 +536,31 @@ BCnLayer_CreateDevice(VkPhysicalDevice physicalDevice,
     	if (memoryProps.memoryTypes[idx].propertyFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)
         	break;
     }
+    
+    auto transcode_to_etc1 = getenv("BCN_TRANSCODE_TO_ETC1") ? atoi(getenv("BCN_TRANSCODE_TO_ETC1")) : 0;
+    auto transcode_to_etc2 = getenv("BCN_TRANSCODE_TO_ETC2") ? atoi(getenv("BCN_TRANSCODE_TO_ETC2")) : transcode_to_etc1;
+    auto transcode_to_astc = getenv("BCN_TRANSCODE_TO_ASTC") ? atoi(getenv("BCN_TRANSCODE_TO_ASTC")) : 0;
+    auto profile_transfers = getenv("BCN_PROFILE_TRANSFERS") ? atoi(getenv("BCN_PROFILE_TRANSFERS")) : 0;
+
+    if (transcode_to_etc2 && !featuresMap[GetKey(physicalDevice)].textureCompressionETC2) {
+        Logger::log("info", "textureCompressionETC2 is not supported, disabling ETC2 transcode");
+        transcode_to_etc2 = false;
+    }
+
+    if (transcode_to_astc && !featuresMap[GetKey(physicalDevice)].textureCompressionASTC_LDR) {
+        Logger::log("info", "textureCompressionASTC_LDR is not supported, disabling ASTC transcode");
+        transcode_to_astc = false;
+    }
 
     memoryIndex = idx < memoryProps.memoryTypeCount ? idx : UINT32_MAX;
     VkPhysicalDeviceFeatures enabledFeatures;
     if (createInfo.pEnabledFeatures) {
     	enabledFeatures = *createInfo.pEnabledFeatures;
     	enabledFeatures.textureCompressionBC &= featuresMap[GetKey(physicalDevice)].textureCompressionBC;
+        if (transcode_to_etc2)
+            enabledFeatures.textureCompressionETC2 = featuresMap[GetKey(physicalDevice)].textureCompressionETC2;
+        if (transcode_to_astc)
+            enabledFeatures.textureCompressionASTC_LDR = featuresMap[GetKey(physicalDevice)].textureCompressionASTC_LDR;
     	createInfo.pEnabledFeatures = &enabledFeatures;
     }
 
@@ -604,6 +623,7 @@ BCnLayer_CreateDevice(VkPhysicalDevice physicalDevice,
     table.MapMemory = (PFN_vkMapMemory)gdpa(*pDevice, "vkMapMemory");
     table.UnmapMemory = (PFN_vkUnmapMemory)gdpa(*pDevice, "vkUnmapMemory");
     table.InvalidateMappedMemoryRanges = (PFN_vkInvalidateMappedMemoryRanges)gdpa(*pDevice, "vkInvalidateMappedMemoryRanges");
+    table.GetBufferMemoryRequirements = (PFN_vkGetBufferMemoryRequirements)gdpa(*pDevice, "vkGetBufferMemoryRequirements");
 
     uint32_t queueCount;
     VkQueue queue;
@@ -634,7 +654,21 @@ BCnLayer_CreateDevice(VkPhysicalDevice physicalDevice,
     device->memoryIndex = memoryIndex;
     device->queue = queue;
     device->alloc = pAllocator;
-    device->use_image_view = getenv("BCN_COMPUTE_IMAGE_VIEW") ? atoi(getenv("BCN_COMPUTE_IMAGE_VIEW")) : 1;
+    device->transcode_to_etc1 = transcode_to_etc1;
+    device->transcode_to_etc2 = transcode_to_etc2;
+    device->transcode_to_astc = transcode_to_astc;
+    device->profile_transfers = profile_transfers;
+    
+    if (!transcode_to_etc2 && !transcode_to_astc) { // transcoding is mutually exclusive with use_image_view
+        device->use_image_view = getenv("BCN_COMPUTE_IMAGE_VIEW") ? atoi(getenv("BCN_COMPUTE_IMAGE_VIEW")) : 1;
+    }
+
+    if (const char* dump_buffers_path = std::getenv("BCN_DUMP_BUFFERS_PATH")) {
+        device->dump_buffers_path = dump_buffers_path;
+    } else {
+        device->dump_buffers_path = "";
+    }
+
    
     result = create_bcn_compute_pipelines(device.get());
     if (result != VK_SUCCESS) {
@@ -643,20 +677,22 @@ BCnLayer_CreateDevice(VkPhysicalDevice physicalDevice,
     }
 
     device->syncPool = std::make_unique<SyncPool>(device->handle);
-
+    uint32_t buffer_multiplier = 1u;
+    if (device->transcode_to_etc2) buffer_multiplier = std::max(buffer_multiplier, 3u);
+    if (device->transcode_to_astc) buffer_multiplier = std::max(buffer_multiplier, 5u);
     const DescriptorSetAllocator::PoolSizes default_pool_sizes {
         .sizes = {
             {
                 .type = (device->use_image_view) ? VK_DESCRIPTOR_TYPE_STORAGE_IMAGE 
                                                  : VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-                .descriptorCount = 256
+                .descriptorCount = 256u
             },
             {
                 .type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-                .descriptorCount = 256
+                .descriptorCount = 256u * buffer_multiplier,
             }
         },
-        .maxSets = 256,
+        .maxSets = 256u,
     };
     device->descriptorSetAllocator = std::make_unique<DescriptorSetAllocator>(
         device.get(), default_pool_sizes);
