@@ -115,7 +115,7 @@ endif()
 
 add_custom_command(
     OUTPUT ${ASTC_SPV}
-    COMMAND glslc -O -c ${ASTC_COMP} -o ${ASTC_SPV}
+    COMMAND glslc -c ${ASTC_COMP} -o ${ASTC_SPV}
     DEPENDS ${ASTC_COMP}
     COMMENT "Compiling ${ASTC_SPV}"
 )
