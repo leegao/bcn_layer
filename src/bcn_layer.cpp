@@ -6,6 +6,7 @@
 #include <unistd.h>
 #include <cmath>
 #include <utility>
+#include <vulkan/vulkan_core.h>
 
 std::unordered_map<void *, VkLayerInstanceDispatchTable> instanceDispatch;
 std::unordered_map<void *, VkInstance> instanceMap;
@@ -499,6 +500,29 @@ void FinalizerThread(struct device* dev) {
     }
 }
 
+bool CheckFor8BitSupport(VkInstance instance, VkPhysicalDevice physicalDevice) {
+    auto props = propertiesMap[GetKey(physicalDevice)];
+    if (props.properties.apiVersion < VK_API_VERSION_1_1) {
+        // 1.0 does not support 8bit
+        return false;
+    }
+
+    VkPhysicalDevice8BitStorageFeaturesKHR storage8 = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_8BIT_STORAGE_FEATURES_KHR,
+    };
+    VkPhysicalDeviceShaderFloat16Int8FeaturesKHR arithmetic8 = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_FLOAT16_INT8_FEATURES_KHR,
+        .pNext = &storage8,
+    };
+    VkPhysicalDeviceFeatures2 features = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
+        .pNext = &arithmetic8,
+    };
+    instanceDispatch[GetKey(instance)].GetPhysicalDeviceFeatures2(physicalDevice, &features);
+
+    return storage8.storageBuffer8BitAccess && arithmetic8.shaderInt8;
+}
+
 VK_LAYER_EXPORT VkResult VKAPI_CALL
 BCnLayer_CreateDevice(VkPhysicalDevice physicalDevice,
 					  const VkDeviceCreateInfo *pCreateInfo,
@@ -553,15 +577,126 @@ BCnLayer_CreateDevice(VkPhysicalDevice physicalDevice,
     }
 
     memoryIndex = idx < memoryProps.memoryTypeCount ? idx : UINT32_MAX;
+
+    // Check for extensions required for the astc encoder (8 and 16 bit support)
+    if (transcode_to_astc && !featuresMap[GetKey(physicalDevice)].shaderInt16) {
+        Logger::log("info", "shaderInt16 is not supported, disabling ASTC transcode");
+        transcode_to_astc = false;
+    }
+    bool has8BitSupport = CheckFor8BitSupport(instance, physicalDevice);
+    if (transcode_to_astc && !has8BitSupport) {
+        Logger::log("info", "shaderInt8 is not supported, disabling ASTC transcode");
+        transcode_to_astc = false;
+    }
+
+    VkBaseOutStructure* ext = (VkBaseOutStructure*)createInfo.pNext;
+    VkPhysicalDevice8BitStorageFeaturesKHR* app8Bit = nullptr;
+    VkPhysicalDevice16BitStorageFeaturesKHR* app16Bit = nullptr;
+    VkPhysicalDeviceShaderFloat16Int8FeaturesKHR* appFloat16Int8 = nullptr;
+    VkPhysicalDeviceFeatures2* appFeatures2 = nullptr;
+
+    while (ext) {
+        if (ext->sType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_8BIT_STORAGE_FEATURES_KHR) {
+            app8Bit = (VkPhysicalDevice8BitStorageFeaturesKHR*)ext;
+        } else if (ext->sType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_16BIT_STORAGE_FEATURES_KHR) {
+            app16Bit = (VkPhysicalDevice16BitStorageFeaturesKHR*)ext;
+        } else if (ext->sType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_FLOAT16_INT8_FEATURES_KHR) {
+            appFloat16Int8 = (VkPhysicalDeviceShaderFloat16Int8FeaturesKHR*)ext;
+        } else if (ext->sType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2) {
+            appFeatures2 = (VkPhysicalDeviceFeatures2*)ext;
+        }
+        ext = ext->pNext;
+    }
+
+    VkPhysicalDeviceProperties2 physProps = propertiesMap[GetKey(physicalDevice)];
+    uint32_t apiVersion = physProps.properties.apiVersion;
+
+    std::vector<const char*> enabledExtensions;
+    if (createInfo.ppEnabledExtensionNames && createInfo.enabledExtensionCount > 0) {
+        enabledExtensions.assign(createInfo.ppEnabledExtensionNames, createInfo.ppEnabledExtensionNames + createInfo.enabledExtensionCount);
+    }
+
+    auto hasExtension = [&](const char* name) {
+        for (const auto& extName : enabledExtensions) {
+            if (strcmp(extName, name) == 0) return true;
+        }
+        return false;
+    };
+
+    if (apiVersion < VK_API_VERSION_1_2) {
+        if (!hasExtension(VK_KHR_8BIT_STORAGE_EXTENSION_NAME)) {
+            // ~78% coverage on Android, but all bifrost+ seems to have it
+            // https://vulkan.gpuinfo.org/displayextensiondetail.php?extension=VK_KHR_8bit_storage
+            Logger::log("info", "Adding extension " VK_KHR_8BIT_STORAGE_EXTENSION_NAME);
+            enabledExtensions.push_back(VK_KHR_8BIT_STORAGE_EXTENSION_NAME);
+        }
+        if (!hasExtension(VK_KHR_SHADER_FLOAT16_INT8_EXTENSION_NAME)) {
+            // ~100% coverage on Android
+            // https://vulkan.gpuinfo.org/displayextensiondetail.php?extension=VK_KHR_shader_float16_int8
+            Logger::log("info", "Adding extension " VK_KHR_SHADER_FLOAT16_INT8_EXTENSION_NAME);
+            enabledExtensions.push_back(VK_KHR_SHADER_FLOAT16_INT8_EXTENSION_NAME);
+        }
+    }
+    createInfo.ppEnabledExtensionNames = enabledExtensions.data();
+    createInfo.enabledExtensionCount = static_cast<uint32_t>(enabledExtensions.size());
+
+    VkPhysicalDevice8BitStorageFeaturesKHR layer8BitFeats = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_8BIT_STORAGE_FEATURES_KHR,
+        .storageBuffer8BitAccess = VK_TRUE,
+    };
+    if (app8Bit) {
+        app8Bit->storageBuffer8BitAccess = VK_TRUE;
+    } else {
+        Logger::log("info", "Enabling storageBuffer8BitAccess");
+        layer8BitFeats.pNext = (void*)createInfo.pNext;
+        createInfo.pNext = &layer8BitFeats;
+    }
+
+    VkPhysicalDevice16BitStorageFeaturesKHR layer16BitFeats = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_16BIT_STORAGE_FEATURES_KHR,
+        .storageBuffer16BitAccess = VK_TRUE,
+    };
+    if (app16Bit) {
+        app16Bit->storageBuffer16BitAccess = VK_TRUE;
+    } else {
+        Logger::log("info", "Enabling storageBuffer16BitAccess");
+        layer16BitFeats.pNext = (void*)createInfo.pNext;
+        createInfo.pNext = &layer16BitFeats;
+    }
+
+    VkPhysicalDeviceShaderFloat16Int8FeaturesKHR layerFloat16Int8Feats = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_FLOAT16_INT8_FEATURES_KHR,
+        .shaderFloat16 = VK_TRUE,
+        .shaderInt8 = VK_TRUE,
+    };
+    if (appFloat16Int8) {
+        appFloat16Int8->shaderFloat16 = VK_TRUE;
+        appFloat16Int8->shaderInt8 = VK_TRUE;
+    } else {
+        Logger::log("info", "Enabling shaderFloat16 and shaderInt8");
+        layerFloat16Int8Feats.pNext = (void*)createInfo.pNext;
+        createInfo.pNext = &layerFloat16Int8Feats;
+    }
+
     VkPhysicalDeviceFeatures enabledFeatures;
     if (createInfo.pEnabledFeatures) {
-    	enabledFeatures = *createInfo.pEnabledFeatures;
-    	enabledFeatures.textureCompressionBC &= featuresMap[GetKey(physicalDevice)].textureCompressionBC;
+        enabledFeatures = *createInfo.pEnabledFeatures;
+        enabledFeatures.textureCompressionBC &= featuresMap[GetKey(physicalDevice)].textureCompressionBC;
         if (transcode_to_etc2)
             enabledFeatures.textureCompressionETC2 = featuresMap[GetKey(physicalDevice)].textureCompressionETC2;
         if (transcode_to_astc)
             enabledFeatures.textureCompressionASTC_LDR = featuresMap[GetKey(physicalDevice)].textureCompressionASTC_LDR;
-    	createInfo.pEnabledFeatures = &enabledFeatures;
+        
+        enabledFeatures.shaderInt16 = VK_TRUE;
+        createInfo.pEnabledFeatures = &enabledFeatures;
+    } else if (appFeatures2) {
+        appFeatures2->features.textureCompressionBC &= featuresMap[GetKey(physicalDevice)].textureCompressionBC;
+        if (transcode_to_etc2)
+            appFeatures2->features.textureCompressionETC2 = featuresMap[GetKey(physicalDevice)].textureCompressionETC2;
+        if (transcode_to_astc)
+            appFeatures2->features.textureCompressionASTC_LDR = featuresMap[GetKey(physicalDevice)].textureCompressionASTC_LDR;
+        
+        appFeatures2->features.shaderInt16 = VK_TRUE;
     }
 
     PFN_vkCreateDevice createDevice = (PFN_vkCreateDevice)gipa(instance, "vkCreateDevice");
