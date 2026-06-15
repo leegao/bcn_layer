@@ -1,10 +1,12 @@
 #include "staging_resources.hpp"
 
+#include "bcn.hpp"
 #include "bcn_layer.hpp"
 #include "buffer.hpp"
 #include <cstdint>
 #include <fstream>
 #include <sstream>
+#include <map>
 
 std::pair<VkSemaphore, VkFence> StagingResources::MakeFence() {
     auto *dev = get_device(device);
@@ -26,6 +28,45 @@ void StagingResources::WaitForCompletion() {
     if (!dev) return;
     dev->table.WaitForFences(device, 1, &completed, VK_TRUE, UINT64_MAX);
     has_completed = true;
+}
+
+std::pair<uint32_t, uint32_t> StagingResources::AllocateQueryPair(
+    VkCommandBuffer cmdBuf,
+    const std::string& label,
+    VkFormat format,
+    uint64_t texture_size,
+    VkQueryPool& outPool) {
+    auto *dev = get_device(device);
+    if (!dev) return { UINT32_MAX, UINT32_MAX };
+    if (queryPools.empty() || queryPools.back().allocatedQueries + 2 > kPoolBlockSize) {
+        // Allocate a new pool
+        VkQueryPoolCreateInfo poolInfo = {
+            .sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO,
+            .pNext = nullptr,
+            .flags = 0,
+            .queryType = VK_QUERY_TYPE_TIMESTAMP,
+            .queryCount = kPoolBlockSize,
+            .pipelineStatistics = 0,
+        };
+        VkQueryPool newPool = VK_NULL_HANDLE;
+        VkResult res = dev->table.CreateQueryPool(device, &poolInfo, nullptr, &newPool);
+        if (res != VK_SUCCESS) {
+            Logger::log("error", "Failed to allocate query pool block: %d", res);
+            return { UINT32_MAX, UINT32_MAX };
+        }
+        dev->table.CmdResetQueryPool(cmdBuf, newPool, 0, kPoolBlockSize);
+        queryPools.push_back({ newPool, 0 });
+    }
+
+    auto& activeBlock = queryPools.back();
+    uint32_t startId = activeBlock.allocatedQueries;
+    activeBlock.allocatedQueries += 2;
+
+    outPool = activeBlock.handle;
+    size_t activePoolIdx = queryPools.size() - 1;
+
+    trackedQueries.push_back({ label, format, texture_size, activePoolIdx, startId, startId + 1 });
+    return { startId, startId + 1 };
 }
 
 void StagingResources::Cleanup() {
@@ -51,11 +92,67 @@ void StagingResources::Cleanup() {
         auto now = std::chrono::system_clock::now();
         auto timestamp = std::chrono::time_point_cast<std::chrono::milliseconds>(now).time_since_epoch().count();
         auto uncompressed_size = MemoryUsage(VK_FORMAT_R8G8B8A8_UNORM) + MemoryUsage(VK_FORMAT_R16G16B16A16_SFLOAT);
-        double memory_usage_mb = ((double)uncompressed_size) / 1024 / 1024;
         auto total_size = MemoryUsage();
-        Logger::log("info", "    cleaning up batch %d with %d buffers (%d MB raw, %d MB recompressed), took %d ms, throughput = %0.2f MB/s", 
+        double memory_usage_mb = ((double)(total_size - uncompressed_size)) / 1024 / 1024;
+        Logger::log("info", "    cleaning up batch %d with %d buffers (%d MB raw, %d MB recompressed), draw took %d ms, throughput = %0.2f MB/s", 
             id, Size(), uncompressed_size / 1024 / 1024, (total_size - uncompressed_size) / 1024 / 1024, timestamp - this->timestamp, 
             memory_usage_mb / (timestamp - this->timestamp) * 1000);
+    }
+
+    if (dev->profile_transfers && !queryPools.empty() && !trackedQueries.empty()) {
+        std::vector<std::vector<uint64_t>> allPoolResults(queryPools.size());
+        bool success = true;
+
+        for (size_t i = 0; i < queryPools.size(); ++i) {
+            auto count = queryPools[i].allocatedQueries;
+            allPoolResults[i].resize(count);
+            VkResult result = dev->table.GetQueryPoolResults(
+                device,
+                queryPools[i].handle,
+                0,
+                count,
+                allPoolResults[i].size() * sizeof(uint64_t),
+                allPoolResults[i].data(),
+                sizeof(uint64_t),
+                VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WAIT_BIT
+            );
+            if (result != VK_SUCCESS) {
+                Logger::log("error", "GetQueryPoolResults failed for pool[%zu]: %d", i, result);
+                success = false;
+                break;
+            }
+        }
+
+        if (success) {
+            float timestampPeriod = dev->props2.properties.limits.timestampPeriod;
+            struct AggregatedStat {
+                double totalTimeMs = 0.0;
+                uint64_t totalSizeBytes = 0;
+                uint32_t count = 0;
+            };
+            std::map<std::string, AggregatedStat> statsRollup;
+            for (const auto& q : trackedQueries) {
+                uint64_t startTicks = allPoolResults[q.poolIndex][q.startQueryId];
+                uint64_t endTicks = allPoolResults[q.poolIndex][q.endQueryId];
+                
+                if (endTicks >= startTicks) {
+                    double durationMs = (double)(endTicks - startTicks) / (1000000.0f / timestampPeriod);
+                    
+                    auto& stat = statsRollup[q.label];
+                    stat.totalTimeMs += durationMs;
+                    stat.totalSizeBytes += q.textureSize;
+                    stat.count++;
+                }
+            }
+            for (const auto& [label, stat] : statsRollup) {
+                double totalSizeMb = static_cast<double>(stat.totalSizeBytes) / (1024.0 * 1024.0);
+                Logger::log("info", "      |-> [%17s] Calls: %-4u | Time: %8.3f ms | Data: %7.1f MB, (granularity: %fns)",
+                    label.c_str(),
+                    stat.count,
+                    stat.totalTimeMs,
+                    totalSizeMb, timestampPeriod);
+            }
+        }
     }
 
     for (auto it = stagingBuffers.begin(); it != stagingBuffers.end();) {
@@ -99,15 +196,24 @@ void StagingResources::Cleanup() {
         dev->table.FreeMemory(device, buf->memory, buf->alloc);
     }
 
-    for (auto it = stagingImageViews.begin(); it != stagingImageViews.end();) {
-        dev->table.DestroyImageView(device, *it, dev->alloc);
-        it = stagingImageViews.erase(it);
+    for (auto imageView : stagingImageViews) {
+        if (imageView != VK_NULL_HANDLE) {
+            dev->table.DestroyImageView(device, imageView, dev->alloc);
+        }
     }
+    stagingImageViews.clear();
 
-    for (auto it = descriptorSets.begin(); it != descriptorSets.end();) {
-        dev->descriptorSetAllocator->free(it->first, it->second);
-        it = descriptorSets.erase(it);
+    for (auto& descriptorSetBlock : descriptorSets) {
+        dev->descriptorSetAllocator->free(descriptorSetBlock.first, descriptorSetBlock.second);
     }
+    queryPools.clear();
+
+    for (auto& poolBlock : queryPools) {
+        if (poolBlock.handle != VK_NULL_HANDLE) {
+            dev->table.DestroyQueryPool(device, poolBlock.handle, nullptr);
+        }
+    }
+    queryPools.clear();
 }
 
 StagingResources::~StagingResources() {

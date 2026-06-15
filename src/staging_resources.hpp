@@ -3,11 +3,26 @@
 
 #include "buffer.hpp"
 
-#include <cstdint>
 #include <vulkan/vulkan.h>
+#include <cstdint>
 #include <vector>
+#include <string>
 
 struct command_buffer;
+
+struct TimestampQuery {
+    std::string label;
+    VkFormat format;
+    uint64_t textureSize;
+    size_t poolIndex;
+    uint32_t startQueryId;
+    uint32_t endQueryId;
+};
+
+struct QueryPoolBlock {
+    VkQueryPool handle;
+    uint32_t allocatedQueries;
+};
 
 struct StagingResources {
 public:
@@ -32,11 +47,19 @@ public:
         }
         return usage;
     }
+    std::pair<uint32_t, uint32_t> AllocateQueryPair(
+        VkCommandBuffer cmdBuf,
+        const std::string& label,
+        VkFormat format,
+        uint64_t texture_size,
+        VkQueryPool& outPool);
     
     int id = 0;
     int64_t timestamp = 0;
     
 private:
+    static const uint32_t kPoolBlockSize = 128;
+
     VkFence completed = VK_NULL_HANDLE;
     VkSemaphore semaphore = VK_NULL_HANDLE;
     VkDevice device;
@@ -46,6 +69,8 @@ private:
     std::vector<std::unique_ptr<struct buffer>> stagingBuffers;
     std::vector<VkImageView> stagingImageViews;
     std::vector<std::pair<VkDescriptorPool, VkDescriptorSet>> descriptorSets;
+    std::vector<QueryPoolBlock> queryPools;
+    std::vector<TimestampQuery> trackedQueries;
 };
 
 #endif

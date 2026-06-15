@@ -14,6 +14,7 @@
 #include "astc_encoder_spv.h"
 #include "lut2.h"
 #include "astc_2p_lut_s2.h"
+#include <cstdint>
 
 bool is_s3tc(VkFormat format) {
 	switch (format) {
@@ -92,6 +93,30 @@ VkFormat get_format_for_bcn_to_etc2(struct device *device, VkFormat format) {
 
 VkFormat get_format_for_bcn_to_astc(struct device *device, VkFormat format) {
     return VK_FORMAT_ASTC_4x4_UNORM_BLOCK; 
+}
+
+std::string vk_format_to_string(VkFormat format) {
+    switch (format) {
+        case VK_FORMAT_BC1_RGB_UNORM_BLOCK:       return "BC1";
+        case VK_FORMAT_BC1_RGB_SRGB_BLOCK:        return "BC1";
+        case VK_FORMAT_BC1_RGBA_UNORM_BLOCK:      return "BC1";
+        case VK_FORMAT_BC1_RGBA_SRGB_BLOCK:       return "BC1";
+        case VK_FORMAT_BC2_UNORM_BLOCK:           return "BC2";
+        case VK_FORMAT_BC2_SRGB_BLOCK:            return "BC2";
+        case VK_FORMAT_BC3_UNORM_BLOCK:           return "BC3";
+        case VK_FORMAT_BC3_SRGB_BLOCK:            return "BC3";
+        case VK_FORMAT_BC4_UNORM_BLOCK:           return "BC4";
+        case VK_FORMAT_BC4_SNORM_BLOCK:           return "BC4";
+        case VK_FORMAT_BC5_UNORM_BLOCK:           return "BC5";
+        case VK_FORMAT_BC5_SNORM_BLOCK:           return "BC5";
+        case VK_FORMAT_BC6H_UFLOAT_BLOCK:         return "BC6H";
+        case VK_FORMAT_BC6H_SFLOAT_BLOCK:         return "BC6H";
+        case VK_FORMAT_BC7_UNORM_BLOCK:           return "BC7";
+        case VK_FORMAT_BC7_SRGB_BLOCK:            return "BC7";
+        case VK_FORMAT_ETC2_R8G8B8A8_UNORM_BLOCK: return "ETC2";
+        case VK_FORMAT_ASTC_4x4_UNORM_BLOCK:      return "ASTC";
+        default: return "VK_FMT_" + std::to_string(static_cast<int>(format));
+    }
 }
 
 bool is_supported_bcn_format(struct device *device, VkFormat format) {
@@ -614,7 +639,20 @@ encode_etc2_compute(struct device *dev,
 	table.CmdBindDescriptorSets(commandbuffer,
 		VK_PIPELINE_BIND_POINT_COMPUTE, dev->etc2Layout, 0, 1,
 		&descriptorSet, 0, nullptr);
-	table.CmdDispatch(commandbuffer, (width + 7) / 8, (height + 7) / 8, 1);
+
+	VkQueryPool queryPool = VK_NULL_HANDLE;
+    std::pair<uint32_t, uint32_t> query = { UINT32_MAX, UINT32_MAX };
+    if (dev->profile_transfers) {
+        query = cb->currentStagingResources->AllocateQueryPair(
+            commandbuffer, "encode_etc2", format, width * height, queryPool);
+    }
+    if (query.first != UINT32_MAX) {
+        table.CmdWriteTimestamp(commandbuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, queryPool, query.first);
+    }
+    table.CmdDispatch(commandbuffer, (width + 7) / 8, (height + 7) / 8, 1);
+	if (query.first != UINT32_MAX) {
+	    table.CmdWriteTimestamp(commandbuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, queryPool, query.second);
+	}
 
 	return VK_SUCCESS;
 }
@@ -749,7 +787,20 @@ encode_astc_compute(struct device *dev,
 	table.CmdBindDescriptorSets(commandbuffer,
 		VK_PIPELINE_BIND_POINT_COMPUTE, dev->astcLayout, 0, 1,
 		&descriptorSet, 0, nullptr);
-	table.CmdDispatch(commandbuffer, (width + 7) / 8, (height + 7) / 8, 1);
+
+	VkQueryPool queryPool = VK_NULL_HANDLE;
+    std::pair<uint32_t, uint32_t> query = { UINT32_MAX, UINT32_MAX };
+    if (dev->profile_transfers) {
+        query = cb->currentStagingResources->AllocateQueryPair(
+            commandbuffer, "encode_astc", format, width * height, queryPool);
+    }
+    if (query.first != UINT32_MAX) {
+        table.CmdWriteTimestamp(commandbuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, queryPool, query.first);
+    }
+    table.CmdDispatch(commandbuffer, (width + 7) / 8, (height + 7) / 8, 1);
+	if (query.first != UINT32_MAX) {
+	    table.CmdWriteTimestamp(commandbuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, queryPool, query.second);
+	}
 
 	return VK_SUCCESS;
 }
@@ -973,8 +1024,19 @@ decompress_bcn_compute(struct device *dev,
 		VK_PIPELINE_BIND_POINT_COMPUTE, dev->layout, 0, 1, 
 		&descriptorSet, 0, nullptr);
 
-	table.CmdDispatch(commandbuffer,
-		(width + 7) / 8, (height + 7) / 8, depth);
+	VkQueryPool queryPool = VK_NULL_HANDLE;
+    std::pair<uint32_t, uint32_t> query = { UINT32_MAX, UINT32_MAX };
+    if (dev->profile_transfers) {
+        query = cb->currentStagingResources->AllocateQueryPair(
+            commandbuffer, "decompress_bcn", format, width * height * depth, queryPool);
+    }
+    if (query.first != UINT32_MAX) {
+        table.CmdWriteTimestamp(commandbuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, queryPool, query.first);
+    }
+	table.CmdDispatch(commandbuffer, (width + 7) / 8, (height + 7) / 8, depth);
+	if (query.first != UINT32_MAX) {
+	    table.CmdWriteTimestamp(commandbuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, queryPool, query.second);
+	}
 
 	if (use_image_view) {
 		VkImageMemoryBarrier second_barrier = {

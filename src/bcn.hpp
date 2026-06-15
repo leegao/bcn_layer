@@ -3,6 +3,7 @@
 
 #include "bcn_layer.hpp"
 #include <cstdint>
+#include <string>
 
 struct push_constants {
 	int format;
@@ -52,4 +53,7 @@ VkResult encode_astc_compute(struct device *dev,
                              VkBufferImageCopy *copy_region,
                              struct buffer *decodedBuffer,
                              struct buffer *stagingBuffer);
+
+std::string vk_format_to_string(VkFormat format);
+
 #endif
