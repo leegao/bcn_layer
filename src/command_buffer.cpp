@@ -73,6 +73,26 @@ BCnLayer_FreeCommandBuffers(VkDevice device,
 	}
 }
 
+size_t BcnBufferSize(VkFormat format, VkBufferImageCopy& copy_region) {
+   	bool formatIsBC1orBC4 = format <= VK_FORMAT_BC1_RGBA_SRGB_BLOCK
+        || format == VK_FORMAT_BC4_UNORM_BLOCK
+        || format == VK_FORMAT_BC4_SNORM_BLOCK;
+    size_t bytesPerBlock = (formatIsBC1orBC4) ? 8 : 16;
+    uint32_t rowLength = (copy_region.bufferRowLength == 0)
+        ? copy_region.imageExtent.width  : copy_region.bufferRowLength;
+    uint32_t imageHeight = (copy_region.bufferImageHeight == 0)
+        ? copy_region.imageExtent.height : copy_region.bufferImageHeight;
+    size_t blockRowLength   = (rowLength + 3) / 4;
+    size_t blockImageHeight = (imageHeight + 3) / 4;
+    size_t copyBlocksX = (copy_region.imageExtent.width + 3)  / 4;
+    size_t copyBlocksY = (copy_region.imageExtent.height + 3) / 4;
+    size_t copyBlocksZ = copy_region.imageExtent.depth;
+
+    size_t bytesPerBlockRow   = blockRowLength * bytesPerBlock;
+    size_t bytesPerBlockSlice = blockImageHeight * bytesPerBlockRow;
+    return copyBlocksX * copyBlocksY * copyBlocksZ * bytesPerBlock;
+}
+
 VK_LAYER_EXPORT void VKAPI_CALL
 BCnLayer_CmdCopyBufferToImage(VkCommandBuffer commandBuffer,
 						      VkBuffer srcBuffer,
@@ -100,16 +120,29 @@ BCnLayer_CmdCopyBufferToImage(VkCommandBuffer commandBuffer,
 			srcBuffer, dstImage, dstImageLayout, regionCount, pRegions);
 		return;
 	}
-	
+
 	for (uint32_t i = 0; i < regionCount; i++) {
 		VkBufferImageCopy copy_region = pRegions[i];
+		int w = copy_region.imageExtent.width;                                                         
+       	int h = copy_region.imageExtent.height;
+        int d = copy_region.imageExtent.depth;
+
+       	VkDeviceSize bcn_buffer_size = BcnBufferSize(format, copy_region);
+		if (!dev->dump_buffers_path.empty() && copy_region.imageExtent.depth == 1) {
+		    auto bcn_buffer = create_staging_buffer(dev, bcn_buffer_size, format, w, h);
+			VkBufferCopy buffer_copy_region {
+			    .srcOffset = copy_region.bufferOffset,
+				.dstOffset = 0,
+				.size = bcn_buffer_size,
+			};
+            table.CmdCopyBuffer(commandBuffer, srcBuffer, bcn_buffer->handle, 1, &buffer_copy_region);
+		    cb->currentStagingResources->AddStagingBuffer(std::move(bcn_buffer));
+		}
+
 		// UE4 games frequently use 3D textures, which we don't support in the iv shaders yet
 		if (dev->use_image_view && copy_region.imageExtent.depth == 1) {
 			decompress_bcn_compute(dev, commandBuffer, format, &copy_region, buf, nullptr, img, dstImageLayout);
 		} else {
-        	int w = copy_region.imageExtent.width;                                                         
-        	int h = copy_region.imageExtent.height;
-            int d = copy_region.imageExtent.depth;
         	int size = w * h * d * texel_size;
         	auto staging_buf = create_staging_buffer(dev, size, target_format, w, h);
 

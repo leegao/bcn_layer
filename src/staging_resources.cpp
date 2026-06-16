@@ -160,37 +160,36 @@ void StagingResources::Cleanup() {
         it = stagingBuffers.erase(it);
         if (!buf) continue;
 
-// #define DEBUG_BCN
-#ifdef DEBUG_BCN
-        Logger::log("info", "  Peeking into buffer %p, memory %p, format %d", buf->handle, buf->memory, buf->format);
-        uint32_t* mappedData;
-        VkResult result = dev->table.MapMemory(device, buf->memory, 0, VK_WHOLE_SIZE, 0, (void **) &mappedData);
-        if (result != VK_SUCCESS) {
-            Logger::log("error", "    MapMemory failed: %d", result);
-        }
-        VkMappedMemoryRange mapped_memory_range = {
-            .sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE,
-            .memory = buf->memory,
-            .offset = 0,
-            .size = VK_WHOLE_SIZE,
-        };
-        dev->table.InvalidateMappedMemoryRanges(device, 1, &mapped_memory_range);
-        Logger::log("info", "    StagingBuffer %p[0] = 0x%x, 0x%x, 0x%x, 0x%x", buf->handle, mappedData[0], mappedData[1], mappedData[2], mappedData[3]);
-        Logger::log("info", "    StagingBuffer %p[1] = 0x%x, 0x%x, 0x%x, 0x%x", buf->handle, mappedData[4], mappedData[5], mappedData[6], mappedData[7]);
-        Logger::log("info", "    StagingBuffer %p[2] = 0x%x, 0x%x, 0x%x, 0x%x", buf->handle, mappedData[8], mappedData[9], mappedData[10], mappedData[11]);
-        Logger::log("info", "    StagingBuffer %p[3] = 0x%x, 0x%x, 0x%x, 0x%x", buf->handle, mappedData[12], mappedData[13], mappedData[14], mappedData[15]);
-
         if (!dev->dump_buffers_path.empty()) {
-            std::stringstream ss;
+            uint32_t* mappedData;
+            VkResult result = dev->table.MapMemory(device, buf->memory, 0, VK_WHOLE_SIZE, 0, (void **) &mappedData);
+            if (result != VK_SUCCESS) {
+                Logger::log("error", "    MapMemory failed: %d", result);
+            }
+            VkMappedMemoryRange mapped_memory_range = {
+                .sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE,
+                .memory = buf->memory,
+                .offset = 0,
+                .size = VK_WHOLE_SIZE,
+            };
+            dev->table.InvalidateMappedMemoryRanges(device, 1, &mapped_memory_range);
+
+            // Logger::log("info", "  Peeking into buffer %p, memory %p, format %d", buf->handle, buf->memory, buf->format);
+            // Logger::log("info", "    StagingBuffer %p[0] = 0x%x, 0x%x, 0x%x, 0x%x", buf->handle, mappedData[0], mappedData[1], mappedData[2], mappedData[3]);
+            // Logger::log("info", "    StagingBuffer %p[1] = 0x%x, 0x%x, 0x%x, 0x%x", buf->handle, mappedData[4], mappedData[5], mappedData[6], mappedData[7]);
+            // Logger::log("info", "    StagingBuffer %p[2] = 0x%x, 0x%x, 0x%x, 0x%x", buf->handle, mappedData[8], mappedData[9], mappedData[10], mappedData[11]);
+            // Logger::log("info", "    StagingBuffer %p[3] = 0x%x, 0x%x, 0x%x, 0x%x", buf->handle, mappedData[12], mappedData[13], mappedData[14], mappedData[15]);
+
+            std::stringstream filename;
             std::string id_str = std::to_string(buf->id);
-            id_str = std::string(5 - id_str.length(), '0') + id_str;
-            ss << dev->dump_buffers_path << "/" << id_str << "_fmt_" << buf->format << "_" << buf->width << "x" << buf->height << ".bin";
-            std::ofstream out(ss.str(), std::ios::out | std::ios::binary);
+            filename << dev->dump_buffers_path << "/" 
+                     << id_str << "_fmt_" << buf->format << "_" << buf->width << "x" << buf->height << ".bin";
+            std::ofstream out(filename.str(), std::ios::out | std::ios::binary);
             out.write(reinterpret_cast<const char*>(mappedData), buf->size);
             out.close();
+
+            dev->table.UnmapMemory(device, buf->memory);
         }
-        dev->table.UnmapMemory(device, buf->memory);
-#endif
 
         dev->table.DestroyBuffer(device, buf->handle, buf->alloc);
         dev->table.FreeMemory(device, buf->memory, buf->alloc);
