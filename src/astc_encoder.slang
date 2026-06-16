@@ -128,7 +128,11 @@ extension uint4 {
 void solve_weights(PartitionMap partition_map, int partition, half4 ep0,
                    half4 ep1, out PackedArray<8, 16> weights) {
   let L = ep1 - ep0;
-  let invLenSq = 1.0h / (dot(L, L) + 0.000001h);
+  let invLenSq = 1.0h / (dot(L, L) + 0.0001h);
+  if (invLenSq > 3000.0h) {
+    weights = PackedArray<8, 16>( {});
+    return;
+  }
   for (int i = 0; i < 16; i++) {
     if (partition_map[i] != partition)
       continue;
