@@ -94,7 +94,7 @@ void StagingResources::Cleanup() {
         auto uncompressed_size = MemoryUsage(VK_FORMAT_R8G8B8A8_UNORM) + MemoryUsage(VK_FORMAT_R16G16B16A16_SFLOAT);
         auto total_size = MemoryUsage();
         double memory_usage_mb = ((double)(total_size - uncompressed_size)) / 1024 / 1024;
-        Logger::log("info", "    cleaning up batch %d with %d buffers (%d MB raw, %d MB recompressed), draw took %d ms, throughput = %0.2f MB/s", 
+        Logger::log("info", "Cleaning up batch %d with %d buffers (%d MB raw, %d MB recompressed), draw took %d ms, throughput = %0.2f MB/s", 
             id, Size(), uncompressed_size / 1024 / 1024, (total_size - uncompressed_size) / 1024 / 1024, timestamp - this->timestamp, 
             memory_usage_mb / (timestamp - this->timestamp) * 1000);
     }
@@ -131,6 +131,7 @@ void StagingResources::Cleanup() {
                 uint32_t count = 0;
             };
             std::map<std::string, AggregatedStat> statsRollup;
+            std::map<std::string, std::map<VkFormat, AggregatedStat>> formatHist;
             for (const auto& q : trackedQueries) {
                 uint64_t startTicks = allPoolResults[q.poolIndex][q.startQueryId];
                 uint64_t endTicks = allPoolResults[q.poolIndex][q.endQueryId];
@@ -142,16 +143,37 @@ void StagingResources::Cleanup() {
                     stat.totalTimeMs += durationMs;
                     stat.totalSizeBytes += q.textureSize;
                     stat.count++;
+
+                    formatHist[q.label][q.format].totalTimeMs += durationMs;
+                    formatHist[q.label][q.format].totalSizeBytes += q.textureSize;
+                    formatHist[q.label][q.format].count++;
                 }
             }
             for (const auto& [label, stat] : statsRollup) {
                 double totalSizeMb = static_cast<double>(stat.totalSizeBytes) / (1024.0 * 1024.0);
-                Logger::log("info", "      |-> [%17s] Calls: %-4u | Time: %8.3f ms | Data: %7.1f MB, (granularity: %fns)",
+                auto throughput = [](double sizeMb, double timeMs) -> double {
+                    double timeSec = timeMs / 1000.0;
+                    return (timeSec > 0.0) ? (sizeMb / timeSec) : 0.0;
+                };
+
+                Logger::log("info", "  [%14s] Calls: %-4u | Time: %6.3f ms | Data: %6.1f MB | Throughput: %6.1f MB/s (granularity: %fns)",
                     label.c_str(),
                     stat.count,
                     stat.totalTimeMs,
-                    totalSizeMb, timestampPeriod);
+                    totalSizeMb,
+                    throughput(totalSizeMb, stat.totalTimeMs),
+                    timestampPeriod);
+                for (const auto [key, substat] : formatHist[label]) {
+                    double subTotalSizeMb = static_cast<double>(substat.totalSizeBytes) / (1024.0 * 1024.0);
+                    Logger::log("info", "     + [format %d], Calls: %-4u | Time: %8.3f ms | Data: %7.1f MB | Throughput: %7.1f MB/s",
+                        key,
+                        substat.count,
+                        substat.totalTimeMs,
+                        subTotalSizeMb,
+                        throughput(subTotalSizeMb, substat.totalTimeMs));
+                }
             }
+            
         }
     }
 
