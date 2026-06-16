@@ -92,8 +92,13 @@ void encode_trits(inout uint block_x, inout uint block_y, inout uint bit_offset,
     }
     PackedArray<8, 5> m, t;
     for (uint j = 0; j < 5; ++j) {
-      m[j] = group[j] & ((1 << bits) - 1);
-      t[j] = group[j] >> bits;
+      if (i + j < count) {
+        m[j] = group[j] & ((1 << bits) - 1);
+        t[j] = group[j] >> bits;
+      } else {
+        m[j] = 0;
+        t[j] = 0;
+      }
     }
 
     var index = t[4] * 81 + t[3] * 27 + t[2] * 9 + t[1] * 3 + t[0];

@@ -105,7 +105,7 @@ if(SLANG_COMPILER AND NOT FORCE_GLSL)
         OUTPUT ${ASTC_COMP}
         COMMAND ${CMAKE_COMMAND} -E echo "// AUTO-GENERATED - DO NOT EDIT, see ${ASTC_SLANG}" > ${ASTC_COMP}
         COMMAND slangc ${ASTC_SLANG} -target glsl -line-directive-mode none >> ${ASTC_COMP}
-        DEPENDS ${ASTC_SLANG}
+        DEPENDS ${ASTC_SLANG} "${CMAKE_CURRENT_SOURCE_DIR}/src/astc_pack.slang"
         COMMENT "Generating GLSL shader: astc_encoder.comp"
     )
 else()
