@@ -15,21 +15,139 @@ layout(push_constant) uniform PushConstants {
     uint id;
 } constants;
 
-const uint FONT_COLUMNS[50] = uint[](
-    0x3E, 0x41, 0x41, 0x41, 0x3E, // 0
-    0x00, 0x42, 0x7F, 0x40, 0x00, // 1
-    0x42, 0x61, 0x51, 0x49, 0x46, // 2
-    0x22, 0x41, 0x49, 0x49, 0x36, // 3
-    0x18, 0x14, 0x12, 0x7F, 0x10, // 4
-    0x27, 0x45, 0x45, 0x45, 0x39, // 5
-    0x3E, 0x49, 0x49, 0x49, 0x30, // 6
-    0x01, 0x01, 0x79, 0x05, 0x03, // 7
-    0x36, 0x49, 0x49, 0x49, 0x36, // 8
-    0x06, 0x49, 0x49, 0x49, 0x3E  // 9
-);
+const uint FONT_COLUMNS[80] = uint[](
+        //  +++  //
+        // +   + //
+        // +   + //
+        // +   + //
+        // +   + //
+        // +   + //
+        //  +++  //
+        0x3E, 0x41, 0x41, 0x41, 0x3E, // 0 (idx 0)
+        //   +   //
+        //  ++   //
+        //   +   //
+        //   +   //
+        //   +   //
+        //   +   //
+        //  +++  //
+        0x00, 0x42, 0x7F, 0x40, 0x00, // 1 (idx 1)
+        //  +++  //
+        // +   + //
+        //     + //
+        //    +  //
+        //   +   //
+        //  +    //
+        // +++++ //
+        0x42, 0x61, 0x51, 0x49, 0x46, // 2 (idx 2)
+        //  +++  //
+        // +   + //
+        //     + //
+        //   ++  //
+        //     + //
+        // +   + //
+        //  +++  //
+        0x22, 0x41, 0x49, 0x49, 0x36, // 3 (idx 3)
+        //    +  //
+        //   ++  //
+        //  + +  //
+        // +  +  //
+        // +++++ //
+        //    +  //
+        //    +  //
+        0x18, 0x14, 0x12, 0x7F, 0x10, // 4 (idx 4)
+        // +++++ //
+        // +     //
+        // ++++  //
+        //     + //
+        //     + //
+        // +   + //
+        //  +++  //
+        0x27, 0x45, 0x45, 0x45, 0x39, // 5 (idx 5)
+        //  +++  //
+        // +     //
+        // +     //
+        // ++++  //
+        // +   + //
+        // +   + //
+        //  +++  //
+        0x3E, 0x49, 0x49, 0x49, 0x30, // 6 (idx 6)
+        // +++++ //
+        //     + //
+        //    +  //
+        //   +   //
+        //   +   //
+        //   +   //
+        //   +   //
+        0x01, 0x01, 0x79, 0x05, 0x03, // 7 (idx 7)
+        //  +++  //
+        // +   + //
+        // +   + //
+        //  +++  //
+        // +   + //
+        // +   + //
+        //  +++  //
+        0x36, 0x49, 0x49, 0x49, 0x36, // 8 (idx 8)
+        //  +++  //
+        // +   + //
+        // +   + //
+        //  ++++ //
+        //     + //
+        //     + //
+        //  +++  //
+        0x06, 0x49, 0x49, 0x49, 0x3E, // 9 (idx 9)
+        //       //
+        //       //
+        //  +++  //
+        //     + //
+        //  ++++ //
+        // +   + //
+        //  ++++ //
+        0x20, 0x54, 0x54, 0x54, 0x78, // a (idx 10)
+        // +     //
+        // +     //
+        // + ++  //
+        // ++  + //
+        // +   + //
+        // +   + //
+        // ++++  //
+        0x7F, 0x48, 0x44, 0x44, 0x38, // b (idx 11)
+        //       //
+        //       //
+        //  +++  //
+        // +   + //
+        // +     //
+        // +   + //
+        //  +++  //
+        0x38, 0x44, 0x44, 0x44, 0x28, // c (idx 12)
+        //     + //
+        //     + //
+        //  ++ + //
+        // +  ++ //
+        // +   + //
+        // +   + //
+        //  ++++ //
+        0x38, 0x44, 0x44, 0x48, 0x7F, // d (idx 13)
+        //       //
+        //       //
+        //  +++  //
+        // +   + //
+        // +++++ //
+        // +     //
+        //  +++  //
+        0x38, 0x54, 0x54, 0x54, 0x18, // e (idx 14)
+        //   ++  //
+        //  +  + //
+        //  +    //
+        // +++   //
+        //  +    //
+        //  +    //
+        //  +    //
+        0x08, 0x7E, 0x09, 0x01, 0x02 // f (idx 15)
+    );
 
 int get_font_pixel(uint digit, ivec2 font_coord) {
-    if (digit > 9U || font_coord.x < 0 || font_coord.x >= 5 || font_coord.y < 0 || font_coord.y >= 7) {
+    if (digit > 15U || font_coord.x < 0 || font_coord.x >= 5 || font_coord.y < 0 || font_coord.y >= 7) {
         return 0;
     }
     uint column = FONT_COLUMNS[digit * 5 + font_coord.x];
@@ -64,12 +182,12 @@ void main() {
         int slot = local_x / glyph_spacing;
         ivec2 font_coord = ivec2(local_x % glyph_spacing, 7 - local_y % 7);
 
-        uint value = constants.id % 10000U;
+        uint value = constants.id % 65536U;
         uint digit = 0U;
-        if (slot == 0) digit = (value / 1000U) % 10U;
-        if (slot == 1) digit = (value / 100U) % 10U;
-        if (slot == 2) digit = (value / 10U) % 10U;
-        if (slot == 3) digit = value % 10U;
+        if (slot == 0) digit = (value / 1000U) % 16U;
+        if (slot == 1) digit = (value / 100U) % 16U;
+        if (slot == 2) digit = (value / 10U) % 16U;
+        if (slot == 3) digit = value % 16U;
         if (get_font_pixel(digit, font_coord) == 1) {
             final_color = vec4(1.0, 1.0, 1.0, 1.0);
         } else {
