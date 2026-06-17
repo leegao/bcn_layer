@@ -146,11 +146,31 @@ const uint FONT_COLUMNS[80] = uint[](
         0x08, 0x7E, 0x09, 0x01, 0x02 // f (idx 15)
     );
 
+const uint OTHER_CHARACTERS[5] = uint[](
+        //       //
+        //       //
+        //       //
+        //  +++  //
+        //       //
+        //       //
+        //       //
+        0x08, 0x08, 0x08, 0x08, 0x08 // - (idx 0)
+    );
+
 int get_font_pixel(uint digit, ivec2 font_coord) {
-    if (digit > 15U || font_coord.x < 0 || font_coord.x >= 5 || font_coord.y < 0 || font_coord.y >= 7) {
+    if (font_coord.x < 0 || font_coord.x >= 5 || font_coord.y < 0 || font_coord.y >= 7) {
         return 0;
     }
-    uint column = FONT_COLUMNS[digit * 5 + font_coord.x];
+
+    uint column;
+    if (digit >= 256U && digit < 256U + 1U) {
+        column = OTHER_CHARACTERS[(digit - 256) * 5 + font_coord.x];
+    } else if (digit < 16U) {
+        column = FONT_COLUMNS[digit * 5 + font_coord.x];
+    } else {
+        return 0;
+    }
+
     return int((column >> (6 - font_coord.y)) & 1U);
 }
 
@@ -165,7 +185,7 @@ void main() {
     vec4 final_color = unpackUnorm4x8(raw_input_color);
 
     int glyph_spacing = 6;
-    int watermark_width = 4 * glyph_spacing;
+    int watermark_width = 7 * glyph_spacing;
     int tile_width = watermark_width + 4 * glyph_spacing * 2;
     int tile_height = 56;
 
@@ -182,12 +202,17 @@ void main() {
         int slot = local_x / glyph_spacing;
         ivec2 font_coord = ivec2(local_x % glyph_spacing, 7 - local_y % 7);
 
-        uint value = constants.id % 65536U;
-        uint digit = 0U;
-        if (slot == 0) digit = (value / 1000U) % 16U;
-        if (slot == 1) digit = (value / 100U) % 16U;
-        if (slot == 2) digit = (value / 10U) % 16U;
+        uint value = constants.id & 0xFFFFU;
+        uint format = (constants.id >> 16) & 0xFFU;
+        uint digit = 0xFFFFU;
+        if (slot == 0) digit = (value / 0x1000U) % 16U;
+        if (slot == 1) digit = (value / 0x100U) % 16U;
+        if (slot == 2) digit = (value / 0x10U) % 16U;
         if (slot == 3) digit = value % 16U;
+        if (slot == 4) digit = 256; // dash
+        if (slot == 5) digit = (format / 16U) % 16U;
+        if (slot == 6) digit = format % 16U;
+
         if (get_font_pixel(digit, font_coord) == 1) {
             final_color = vec4(1.0, 1.0, 1.0, 1.0);
         } else {

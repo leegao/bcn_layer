@@ -852,7 +852,7 @@ add_debug_watermark(struct device *dev,
 	auto commandbuffer = cb->handle;
 	uint width = copy_region->imageExtent.width;
 	uint height = copy_region->imageExtent.height;
-    uint32_t flags = decodedBuffer->id;
+    uint32_t flags = (decodedBuffer->id & 0xFFFFu) | ((uint) format << 16);
 
     // Reuse etc2 layout and constants for watermarking
 	struct etc2_push_constants constants = {
