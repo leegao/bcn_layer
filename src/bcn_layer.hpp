@@ -99,6 +99,7 @@ struct device {
 	VkPipeline bc7Pipeline;
 	VkPipeline etc2Pipeline;
 	VkPipeline astcPipeline;
+	VkPipeline watermarkPipeline;
 	VkPipelineLayout layout;
 	VkPipelineLayout etc2Layout;
 	VkPipelineLayout astcLayout;
@@ -109,6 +110,7 @@ struct device {
 	int transcode_to_etc2 = 0;
 	int transcode_to_astc = 0;
 	int profile_transfers = 0;
+	int add_watermark = 0;
 	VkDescriptorSetLayout setLayout;
 	VkDescriptorSetLayout etc2SetLayout;
 	VkDescriptorSetLayout astcSetLayout;

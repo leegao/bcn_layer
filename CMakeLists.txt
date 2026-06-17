@@ -27,7 +27,7 @@ configure_file(
 )
 
 # BCn decode shaders
-set(SHADER_NAMES s3tc rgtc bc6 bc7 s3tc_iv rgtc_iv bc6_iv bc7_iv)
+set(SHADER_NAMES s3tc rgtc bc6 bc7 s3tc_iv rgtc_iv bc6_iv bc7_iv watermark)
 set(SPIRV_HEADERS "")
 
 file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/src")

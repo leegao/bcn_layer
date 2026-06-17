@@ -12,6 +12,7 @@
 #include "rgtc_iv_spv.h"
 #include "etc2_encode_spv.h"
 #include "astc_encoder_spv.h"
+#include "watermark_spv.h"
 #include "lut2.h"
 #include "astc_2p_lut_s2.h"
 #include <cstdint>
@@ -213,12 +214,20 @@ create_bcn_compute_pipelines(struct device *dev)
         .pCode = (const uint32_t *) astc_encoder_spv,
     };
 
+   	VkShaderModule watermarkShaderModule;
+    VkShaderModuleCreateInfo watermark_shader_info = {
+        .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+        .codeSize = watermark_spv_len,
+        .pCode = (const uint32_t *) watermark_spv,
+    };
+
 	table.CreateShaderModule(device, &s3tc_shader_info, nullptr, &s3tcShaderModule);
 	table.CreateShaderModule(device, &bc6_shader_info, nullptr, &bc6ShaderModule);
 	table.CreateShaderModule(device, &bc7_shader_info, nullptr, &bc7ShaderModule);
 	table.CreateShaderModule(device, &rgtc_shader_info, nullptr, &rgtcShaderModule);
 	table.CreateShaderModule(device, &etc2_shader_info, nullptr, &etc2ShaderModule);
 	table.CreateShaderModule(device, &astc_shader_info, nullptr, &astcShaderModule);
+	table.CreateShaderModule(device, &watermark_shader_info, nullptr, &watermarkShaderModule);
 
 	VkPipelineShaderStageCreateInfo shader_stage_infos[] = {
 		{
@@ -272,6 +281,15 @@ create_bcn_compute_pipelines(struct device *dev)
 		    .flags = 0,
 		    .stage = VK_SHADER_STAGE_COMPUTE_BIT,
 		    .module = astcShaderModule,
+		    .pName = "main",
+		    .pSpecializationInfo = nullptr
+		},
+		{
+		    .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+		    .pNext = nullptr,
+		    .flags = 0,
+		    .stage = VK_SHADER_STAGE_COMPUTE_BIT,
+		    .module = watermarkShaderModule,
 		    .pName = "main",
 		    .pSpecializationInfo = nullptr
 		},
@@ -494,13 +512,22 @@ create_bcn_compute_pipelines(struct device *dev)
 		    .layout = dev->astcLayout,
 		    .basePipelineHandle = VK_NULL_HANDLE,
 		    .basePipelineIndex = -1
+		},
+		{
+		    .sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
+		    .pNext = nullptr,
+		    .flags = 0,
+		    .stage = shader_stage_infos[6],
+		    .layout = dev->etc2Layout, // TODO(leegao): same layout for now
+		    .basePipelineHandle = VK_NULL_HANDLE,
+		    .basePipelineIndex = -1
 		}
 	};
 
-	VkPipeline pipelines[6];
+	VkPipeline pipelines[7];
 
 	result = table.CreateComputePipelines(device,
-		VK_NULL_HANDLE, 6, pipeline_create_info, NULL, pipelines);
+		VK_NULL_HANDLE, 7, pipeline_create_info, NULL, pipelines);
 
 	if (result != VK_SUCCESS) {
 		Logger::log("error", "Failed to create compute pipeline, res %d", result);
@@ -513,6 +540,7 @@ create_bcn_compute_pipelines(struct device *dev)
 	dev->bc7Pipeline = pipelines[3];
 	dev->etc2Pipeline = pipelines[4];
 	dev->astcPipeline = pipelines[5];
+	dev->watermarkPipeline = pipelines[6];
 
 	table.DestroyShaderModule(device, s3tcShaderModule, nullptr);
 	table.DestroyShaderModule(device, bc6ShaderModule, nullptr);
@@ -520,6 +548,7 @@ create_bcn_compute_pipelines(struct device *dev)
 	table.DestroyShaderModule(device, rgtcShaderModule, nullptr);
 	table.DestroyShaderModule(device, etc2ShaderModule, nullptr);
 	table.DestroyShaderModule(device, astcShaderModule, nullptr);
+	table.DestroyShaderModule(device, watermarkShaderModule, nullptr);
 
 	if (dev->transcode_to_astc) {
 		dev->lut2Buffer = create_staging_buffer(dev, lut2_bin_len * sizeof(uint32_t), VK_FORMAT_UNDEFINED, 0, 0);
@@ -806,6 +835,118 @@ encode_astc_compute(struct device *dev,
 }
 
 VkResult
+add_debug_watermark(struct device *dev,
+                    struct command_buffer *cb,
+                    VkFormat format,
+                    VkBufferImageCopy *copy_region,
+                    struct buffer *decodedBuffer,
+                    struct buffer *stagingBuffer)
+{
+    VkResult result;
+	VkLayerDispatchTable table;
+	VkDevice device;
+   
+	table = dev->table;
+	device = dev->handle;
+   
+	auto commandbuffer = cb->handle;
+	uint width = copy_region->imageExtent.width;
+	uint height = copy_region->imageExtent.height;
+    uint32_t flags = decodedBuffer->id;
+
+    // Reuse etc2 layout and constants for watermarking
+	struct etc2_push_constants constants = {
+		.width = width,
+		.height = height,
+		.flags = flags,
+	};
+   
+	VkDescriptorPool pool;
+	VkDescriptorSet descriptorSet;
+	result = dev->descriptorSetAllocator->allocate(dev->etc2SetLayout, &pool, &descriptorSet);
+	if (result != VK_SUCCESS) {
+	    Logger::log("error", "Failed to allocate descriptor set for add_debug_watermark: %d", result);
+		return result;
+	}
+	cb->currentStagingResources->AddDescriptorSet(pool, descriptorSet);
+   
+	VkDescriptorBufferInfo src_info = {
+		.buffer = decodedBuffer->handle,
+		.offset = 0,
+		.range = VK_WHOLE_SIZE
+	};
+   
+	VkDescriptorBufferInfo dst_info = {
+		.buffer = stagingBuffer->handle,
+		.offset = 0,
+		.range = VK_WHOLE_SIZE
+	};
+   
+	VkWriteDescriptorSet desc_writes[2];
+	desc_writes[0] = VkWriteDescriptorSet {
+	    .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+	    .dstSet = descriptorSet,
+	    .dstBinding = 0,
+	    .descriptorCount = 1,
+	    .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+	    .pBufferInfo = &src_info,
+	};
+	desc_writes[1] = VkWriteDescriptorSet {
+	    .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+	    .dstSet = descriptorSet,
+	    .dstBinding = 1,
+	    .descriptorCount = 1,
+	    .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+	    .pBufferInfo = &dst_info,
+	};
+   
+	table.UpdateDescriptorSets(device, 2, desc_writes, 0, NULL);
+	VkBufferMemoryBarrier bufferBarrier = {
+           .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
+           .srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT,
+           .dstAccessMask = VK_ACCESS_SHADER_READ_BIT,
+           .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+           .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+           .buffer = decodedBuffer->handle,
+           .offset = 0,
+           .size = VK_WHOLE_SIZE
+       };
+   
+    table.CmdPipelineBarrier(
+        commandbuffer,
+        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+        0,
+        0, NULL,
+        1, &bufferBarrier,
+        0, NULL
+    );
+
+	table.CmdBindPipeline(commandbuffer, VK_PIPELINE_BIND_POINT_COMPUTE, dev->watermarkPipeline);
+	table.CmdPushConstants(commandbuffer,
+		dev->etc2Layout, VK_SHADER_STAGE_COMPUTE_BIT, 0,
+		sizeof(constants), &constants);
+	table.CmdBindDescriptorSets(commandbuffer,
+		VK_PIPELINE_BIND_POINT_COMPUTE, dev->etc2Layout, 0, 1,
+		&descriptorSet, 0, nullptr);
+   
+	VkQueryPool queryPool = VK_NULL_HANDLE;
+    std::pair<uint32_t, uint32_t> query = { UINT32_MAX, UINT32_MAX };
+    if (dev->profile_transfers) {
+        query = cb->currentStagingResources->AllocateQueryPair(
+            commandbuffer, "watermarking", format, width * height, queryPool);
+    }
+    if (query.first != UINT32_MAX) {
+        table.CmdWriteTimestamp(commandbuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, queryPool, query.first);
+    }
+    table.CmdDispatch(commandbuffer, (width + 7) / 8, (height + 7) / 8, 1);
+	if (query.first != UINT32_MAX) {
+	    table.CmdWriteTimestamp(commandbuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, queryPool, query.second);
+	}
+   
+	return VK_SUCCESS;
+}
+
+VkResult
 decompress_bcn_compute(struct device *dev,
 		       		   VkCommandBuffer commandbuffer,
 		       		   VkFormat format,
@@ -841,11 +982,19 @@ decompress_bcn_compute(struct device *dev,
 	int use_image_view = dev->use_image_view && depth == 1;
 	int use_etc2 = dstImage->transcode_to_etc2;
 	int use_astc = dstImage->transcode_to_astc;
+	// TODO: add support for rgba16_sfloat
+	int add_watermark = dev->add_watermark && depth == 1 && get_format_for_bcn(format) != VK_FORMAT_R16G16B16A16_SFLOAT;
 
 	std::unique_ptr<struct buffer> decodedBuffer;
 	if (use_etc2 || use_astc) {
 		int texel_size = is_bc6(format) ? 8 : 4;
 		decodedBuffer = create_staging_buffer(dev, width * height * depth * texel_size, get_format_for_bcn(format), width, height);
+	}
+
+	std::unique_ptr<struct buffer> waterMarkedDecodedBuffer;
+	if (add_watermark) {
+    	int texel_size = is_bc6(format) ? 8 : 4;
+    	waterMarkedDecodedBuffer = create_staging_buffer(dev, width * height * depth * texel_size, get_format_for_bcn(format), width, height);
 	}
 
 	struct push_constants constants = {
@@ -878,7 +1027,16 @@ decompress_bcn_compute(struct device *dev,
 	};
 
 	// Scope this at the UpdateDescriptorSets level to avoid use-after-free
-	auto targetBuffer = (use_etc2 || use_astc) ? decodedBuffer.get() : stagingBuffer;
+	// [srcBuffer -> stagingBuffer] if no transcode and no watermark
+	// [srcBuffer -> waterMarkedDecodedBuffer] -> stagingBuffer if no transcode and yes watermark
+	// [srcBuffer -> decodedBuffer] -> stagingBuffer if yes transcode and no watermark
+	// [srcBuffer -> decodedBuffer] -> waterMarkedDecodedBuffer -> stagingBuffer if yes transcode and yes watermark
+	auto targetBuffer = stagingBuffer;
+	if (use_etc2 || use_astc) {
+	    targetBuffer = decodedBuffer.get(); // unwatermarked buffer
+	} else if (add_watermark) {
+        targetBuffer = waterMarkedDecodedBuffer.get(); // watermarked buffer
+	}
 	VkDescriptorBufferInfo dst_info = {
 		.buffer = use_image_view ? VK_NULL_HANDLE : targetBuffer->handle,
 		.offset = 0,
@@ -1038,6 +1196,20 @@ decompress_bcn_compute(struct device *dev,
 	    table.CmdWriteTimestamp(commandbuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, queryPool, query.second);
 	}
 
+	if (add_watermark) {
+    	// srcBuffer -> [waterMarkedDecodedBuffer -> stagingBuffer] if no transcode and yes watermark
+    	// srcBuffer -> [decodedBuffer -> waterMarkedDecodedBuffer] -> stagingBuffer if yes transcode
+    	auto targetBufferWatermark = stagingBuffer;
+    	if (use_etc2 || use_astc) {
+    	    targetBufferWatermark = waterMarkedDecodedBuffer.get();
+    	}
+	    VkResult result = add_debug_watermark(dev, cb, format, copy_region, targetBuffer, targetBufferWatermark);
+		if (result != VK_SUCCESS) {
+		    Logger::log("error", "add_debug_watermark failed: %d", result);
+			return result;
+		}
+	}
+
 	if (use_image_view) {
 		VkImageMemoryBarrier second_barrier = {
 			.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
@@ -1063,21 +1235,30 @@ decompress_bcn_compute(struct device *dev,
 			VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT,
 		    0, 0, nullptr, 0, nullptr, 1, &second_barrier);
 	}
-
+	
+	// srcBuffer -> [decodedBuffer -> stagingBuffer] if yes transcode and no watermark
+	// srcBuffer -> decodedBuffer -> [waterMarkedDecodedBuffer -> stagingBuffer] if yes transcode and yes watermark
+	auto sourceDecodedBuffer = add_watermark ? waterMarkedDecodedBuffer.get() : decodedBuffer.get();
 	if (use_etc2) {
-		VkResult result = encode_etc2_compute(dev, cb, format, copy_region, decodedBuffer.get(), stagingBuffer);
+		VkResult result = encode_etc2_compute(dev, cb, format, copy_region, sourceDecodedBuffer, stagingBuffer);
 		if (result != VK_SUCCESS) {
 		    Logger::log("error", "encode_etc2_compute failed: %d", result);
 			return result;
 		}
-		cb->currentStagingResources->AddStagingBuffer(std::move(decodedBuffer));
 	} else if (use_astc) {
-		VkResult result = encode_astc_compute(dev, cb, format, copy_region, decodedBuffer.get(), stagingBuffer);
+		VkResult result = encode_astc_compute(dev, cb, format, copy_region, sourceDecodedBuffer, stagingBuffer);
 		if (result != VK_SUCCESS) {
 		    Logger::log("error", "encode_astc_compute failed: %d", result);
 			return result;
 		}
-		cb->currentStagingResources->AddStagingBuffer(std::move(decodedBuffer));
+	}
+
+	if (use_etc2 || use_astc) {
+	    cb->currentStagingResources->AddStagingBuffer(std::move(decodedBuffer));
+	}
+
+	if (add_watermark) {
+	    cb->currentStagingResources->AddStagingBuffer(std::move(waterMarkedDecodedBuffer));
 	}
 
 	return VK_SUCCESS;

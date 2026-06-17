@@ -115,14 +115,13 @@ BCnLayer_CreateBuffer(VkDevice device,
 		return result;
 	}
 
-	int id = bufferIdCounter.fetch_add(1);
 	auto buf = std::make_unique<struct buffer>();
 	buf->handle = *pBuffer;
 	buf->size = pCreateInfo->size;
 	buf->device = dev;
 	buf->alloc = pAllocator;
 	buf->format = VK_FORMAT_UNDEFINED;
-	buf->id = id;
+	buf->id = 0;
 
 	{
 		scoped_lock l(global_lock);
