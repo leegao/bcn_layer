@@ -10,3 +10,4 @@ src/bc7_iv_spv.h
 src/etc2_spv.h
 src/astc_decoder_spv.h
 build/
+build_i86/

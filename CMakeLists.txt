@@ -20,6 +20,10 @@ else()
     set(JSON_LIBRARY_PATH "libbcn_layer.so")
 endif()
 
+if(NOT DEFINED OUT_NAME)
+    set(OUT_NAME etc2_layer)
+endif()
+
 # configure_file(
 #     "${CMAKE_CURRENT_SOURCE_DIR}/libbcn_layer.json.in"
 #     "${CMAKE_CURRENT_BINARY_DIR}/libbcn_layer.json"
@@ -66,7 +70,7 @@ add_library(bcn_layer SHARED ${SOURCES} ${SPIRV_HEADERS})
 
 set_target_properties(bcn_layer PROPERTIES
     PREFIX "lib"
-    OUTPUT_NAME "etc2_layer"
+    OUTPUT_NAME "${OUT_NAME}"
 )
 
 target_include_directories(bcn_layer PRIVATE
@@ -75,6 +79,7 @@ target_include_directories(bcn_layer PRIVATE
 )
 
 install(TARGETS bcn_layer DESTINATION ${LIB_INSTALL_DIR})
-# install(FILES "${CMAKE_CURRENT_BINARY_DIR}/libbcn_layer.json" DESTINATION ${JSON_INSTALL_DIR})
+install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/libetc2_layer.json" DESTINATION ${JSON_INSTALL_DIR})
+install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/libetc2_layer32.json" DESTINATION ${JSON_INSTALL_DIR})
 
 message(STATUS "Run `BCN_TRANSCODE_TO_ETC2=1 BCN_LAYER_LOG_LEVEL=info ENABLE_BCN_COMPUTE=1 VK_INSTANCE_LAYERS=VK_LAYER_KHRONOS_validation vkcube` to test the layer")

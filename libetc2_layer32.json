@@ -1,0 +1,21 @@
+{
+    "file_format_version": "1.0.0",
+    "layer": {
+        "name": "VK_LAYER_ETC2_ETC2Layer32",
+        "type": "GLOBAL",
+        "library_path": "./libetc2_layer32.so",
+        "api_version": "1.0.0",
+        "implementation_version": "1",
+        "description": "ETC2 Decompression Layer",
+        "functions": {
+            "vkGetInstanceProcAddr": "BCnLayer_GetInstanceProcAddr",
+            "vkGetDeviceProcAddr": "BCnLayer_GetDeviceProcAddr"
+        },
+        "enable_environment": {
+            "ENABLE_ETC2": "1"
+        },
+        "disable_environment": {
+            "DISABLE_ETC2": "1"
+        }
+    }
+}

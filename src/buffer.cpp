@@ -13,6 +13,11 @@ create_staging_buffer(struct device *dev, int size)
 	VkLayerDispatchTable table = dev->table;
 	VkDevice device = dev->handle;
 
+	// Validation Error: [ VUID-vkCmdDispatch-storageBuffers-06936 ] | MessageID = 0xace7baff
+	// vkCmdDispatch(): (set = 0, binding = 1, index 0)  access out of bounds.
+	// The descriptor buffer (VkBuffer 0xc200000000c20) size is 4 bytes, 4 bytes were bound, and the highest out of bounds access was at [15] bytes
+	// We need to 16-bit align the buffer size.
+	size = (size + 15) & ~15;
 	VkBufferCreateInfo buffer_create_info = {
 		.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
 		.pNext = nullptr,
@@ -55,6 +60,7 @@ create_staging_buffer(struct device *dev, int size)
 	staging_buf->handle = buffer;
 	staging_buf->memory = memory;
 	staging_buf->offset = 0;
+	staging_buf->size = size;
 	staging_buf->device = dev;
 	staging_buf->alloc = nullptr;
 
