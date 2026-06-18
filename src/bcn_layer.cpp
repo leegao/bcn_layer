@@ -1,5 +1,6 @@
 #include "bcn_layer.hpp"
 #include "bcn.hpp"
+#include "logger.hpp"
 #include "vulkan/vk_layer.h"
 
 #include <memory>
@@ -491,10 +492,14 @@ void FinalizerThread(struct device* dev) {
                 }
             }
 
-            for (auto& stagingResources : queue) {
+            while (!queue.empty()) {
                 if (dev->stop_thread) return;
-                stagingResources->WaitForCompletion();
-                stagingResources->Cleanup();
+                std::unique_ptr<StagingResources> stagingResources = std::move(queue.back());
+                queue.pop_back();
+                if (stagingResources) {
+                    stagingResources->WaitForCompletion();
+                    stagingResources->Cleanup(); 
+                }
             }
         }
     }
@@ -716,6 +721,7 @@ BCnLayer_CreateDevice(VkPhysicalDevice physicalDevice,
     table.CreateImage = (PFN_vkCreateImage)gdpa(*pDevice, "vkCreateImage");
     table.CreateImageView = (PFN_vkCreateImageView)gdpa(*pDevice, "vkCreateImageView");
     table.DestroyImage = (PFN_vkDestroyImage)gdpa(*pDevice, "vkDestroyImage");
+    table.DestroyImageView = (PFN_vkDestroyImageView)gdpa(*pDevice, "vkDestroyImageView");
     table.CreateBuffer = (PFN_vkCreateBuffer)gdpa(*pDevice, "vkCreateBuffer");
     table.BindBufferMemory = (PFN_vkBindBufferMemory)gdpa(*pDevice, "vkBindBufferMemory");
     table.BindBufferMemory2 = (PFN_vkBindBufferMemory2)gdpa(*pDevice, "vkBindBufferMemory2");

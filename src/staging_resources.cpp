@@ -220,7 +220,7 @@ void StagingResources::Cleanup() {
 
     for (auto imageView : stagingImageViews) {
         if (imageView != VK_NULL_HANDLE) {
-            dev->table.DestroyImageView(device, imageView, dev->alloc);
+            dev->table.DestroyImageView(device, imageView, nullptr);
         }
     }
     stagingImageViews.clear();
@@ -228,7 +228,7 @@ void StagingResources::Cleanup() {
     for (auto& descriptorSetBlock : descriptorSets) {
         dev->descriptorSetAllocator->free(descriptorSetBlock.first, descriptorSetBlock.second);
     }
-    queryPools.clear();
+    descriptorSets.clear();
 
     for (auto& poolBlock : queryPools) {
         if (poolBlock.handle != VK_NULL_HANDLE) {

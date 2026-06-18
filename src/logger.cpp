@@ -37,8 +37,8 @@ namespace Logger {
 	
 	void log (const std::string& log_level, const char *format, ...) {
 		Logger::init();
-		if (!get_bcn_layer_log_level(log_level.c_str()))
-			return;
+		// if (!get_bcn_layer_log_level(log_level.c_str()))
+		// 	return;
 			
 		constexpr size_t BUFFER_SIZE = 1024;
 		char buffer[BUFFER_SIZE];
