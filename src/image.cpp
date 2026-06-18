@@ -1,4 +1,5 @@
 #include "image.hpp"
+#include <vector>
 
 std::unordered_map<VkImage, std::unique_ptr<struct image>> imagesMap;
 
@@ -29,12 +30,13 @@ BCnLayer_CreateImage(VkDevice device,
 	table = dev->table;
 	bool transcode_to_etc2 = false;
 	bool transcode_to_astc = false;
+	std::vector<VkFormat> compatibleFormats; // in-place modification of VkImageFormatListCreateInfo seems to make dxvk not happy
 	if (is_supported_bcn_format(dev, pCreateInfo->format)) {
+	    // TODO: Texture3D not supported for recompression at the moment
 	    transcode_to_etc2 = dev->transcode_to_etc2 && pCreateInfo->imageType != VK_IMAGE_TYPE_3D;
 		transcode_to_astc = !transcode_to_etc2 
 		                    && dev->transcode_to_astc && pCreateInfo->imageType != VK_IMAGE_TYPE_3D;
 	    auto target_format = get_format_for_bcn(pCreateInfo->format);
-		// TODO: Texture3D not supported for recompression at the moment
 		if (transcode_to_etc2)
 			target_format = get_format_for_bcn_to_etc2(dev, pCreateInfo->format);
 		else if (transcode_to_astc)
@@ -42,7 +44,9 @@ BCnLayer_CreateImage(VkDevice device,
 	    create_info.format = target_format;
 		if (!transcode_to_etc2 && !transcode_to_astc)
 	        create_info.usage |= VK_IMAGE_USAGE_STORAGE_BIT;
-	    create_info.flags &= ~VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT;
+
+		// https://docs.vulkan.org/spec/latest/chapters/resources.html#VUID-VkImageCreateInfo-flags-04738
+	    // create_info.flags &= ~VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT;
 
         // err:   vkCreateImage(): 
         //     pCreateInfo->pNext<VkImageFormatListCreateInfo>.pViewFormats[0] (VK_FORMAT_BC3_UNORM_BLOCK) and 
@@ -53,9 +57,17 @@ BCnLayer_CreateImage(VkDevice device,
                 case VK_STRUCTURE_TYPE_IMAGE_FORMAT_LIST_CREATE_INFO: {
                     auto* ext = reinterpret_cast<VkImageFormatListCreateInfo*>(const_cast<VkBaseInStructure*>(pnext));
                     if (ext->pViewFormats != nullptr) {
-                        ext->viewFormatCount = 1;
                         auto* formats = const_cast<VkFormat*>(ext->pViewFormats);
-                        formats[0] = target_format;
+                        for (int i = 0; i < ext->viewFormatCount; i++) {
+                            auto original_view_format = formats[i];
+                            auto target_view_format = get_format_for_bcn(original_view_format);
+                      		if (transcode_to_etc2)
+                     			target_view_format = get_format_for_bcn_to_etc2(dev, original_view_format);
+                      		else if (transcode_to_astc)
+                     			target_view_format = get_format_for_bcn_to_astc(dev, original_view_format);
+                            compatibleFormats.push_back(target_view_format);
+                        }
+                        ext->pViewFormats = compatibleFormats.data();
                     }
                     break;
                 }

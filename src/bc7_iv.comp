@@ -591,9 +591,6 @@ void main()
     uvec4 rgba_result = interpolate_endpoint(interp);
     vec4 decompressed_color = rgba_result / 255.0;
 
-    if (format == VK_FORMAT_BC7_SRGB_BLOCK)
-        decompressed_color = vec4(srgbDecode(decompressed_color.rgb), decompressed_color.a);
-
     ivec2 final_dst_pixel = ivec2(offsetX, offsetY) + coord;
     imageStore(uOutput, final_dst_pixel, decompressed_color);
 }

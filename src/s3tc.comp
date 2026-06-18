@@ -178,13 +178,6 @@ void main()
         decoded.a = decode_alpha_rgtc(alpha_payload, linear_pixel);
     }
 
-    bool is_srgb = (format == VK_FORMAT_BC1_RGB_SRGB_BLOCK ||
-            format == VK_FORMAT_BC1_RGBA_SRGB_BLOCK ||
-            format == VK_FORMAT_BC2_SRGB_BLOCK ||
-            format == VK_FORMAT_BC3_SRGB_BLOCK);
-    if (is_srgb)
-        decoded = vec4(srgbDecode(decoded.rgb), decoded.a);
-
     int pixel_index = (z * width * height) + (y * width) + x;
     uOutput.data[pixel_index] = packUnorm4x8(decoded);
 }

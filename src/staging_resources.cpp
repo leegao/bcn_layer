@@ -165,7 +165,8 @@ void StagingResources::Cleanup() {
                     timestampPeriod);
                 for (const auto [key, substat] : formatHist[label]) {
                     double subTotalSizeMb = static_cast<double>(substat.totalSizeBytes) / (1024.0 * 1024.0);
-                    Logger::log("info", "     + [format %d], Calls: %-4u | Time: %8.3f ms | Data: %7.1f MB | Throughput: %7.1f MB/s",
+                    Logger::log("info", "     + [%s (%d)], Calls: %-4u | Time: %8.3f ms | Data: %7.1f MB | Throughput: %7.1f MB/s",
+                        vk_format_to_string(key).c_str(),
                         key,
                         substat.count,
                         substat.totalTimeMs,

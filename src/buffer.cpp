@@ -15,7 +15,7 @@ create_staging_buffer(struct device *dev, int size, VkFormat format, int width, 
 	VkLayerDispatchTable table = dev->table;
 	VkDevice device = dev->handle;
 	uint align = 15;
-	if (format == VK_FORMAT_R8G8B8A8_UNORM) {
+	if (format == VK_FORMAT_R8G8B8A8_UNORM || format == VK_FORMAT_R8G8B8A8_SRGB) {
 	    align = 63;
 	} else if (format == VK_FORMAT_R16G16B16A16_SFLOAT) {
 	    align = 127;

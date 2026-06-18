@@ -72,6 +72,7 @@ VkFormat get_format_for_bcn(VkFormat format) {
 		case VK_FORMAT_BC2_SRGB_BLOCK:
 		case VK_FORMAT_BC3_SRGB_BLOCK:
 		case VK_FORMAT_BC7_SRGB_BLOCK:
+		    return VK_FORMAT_R8G8B8A8_SRGB;
 		case VK_FORMAT_BC1_RGB_UNORM_BLOCK:
 		case VK_FORMAT_BC1_RGBA_UNORM_BLOCK:
 		case VK_FORMAT_BC2_UNORM_BLOCK:
@@ -79,7 +80,7 @@ VkFormat get_format_for_bcn(VkFormat format) {
 		case VK_FORMAT_BC4_UNORM_BLOCK:
 		case VK_FORMAT_BC5_UNORM_BLOCK:
 		case VK_FORMAT_BC7_UNORM_BLOCK:
-			return VK_FORMAT_R8G8B8A8_UNORM;
+		    return VK_FORMAT_R8G8B8A8_UNORM;
 		case VK_FORMAT_BC4_SNORM_BLOCK:
 		case VK_FORMAT_BC5_SNORM_BLOCK:
 			return VK_FORMAT_R8G8B8A8_SNORM;
@@ -89,33 +90,79 @@ VkFormat get_format_for_bcn(VkFormat format) {
 }
 
 VkFormat get_format_for_bcn_to_etc2(struct device *device, VkFormat format) {
-	return VK_FORMAT_ETC2_R8G8B8A8_UNORM_BLOCK; // TODO: opportunistically use RGB8
+    // TODO: opportunistically use RGB8
+    switch (format) {
+		case VK_FORMAT_BC1_RGB_SRGB_BLOCK:
+		case VK_FORMAT_BC1_RGBA_SRGB_BLOCK:
+		case VK_FORMAT_BC2_SRGB_BLOCK:
+		case VK_FORMAT_BC3_SRGB_BLOCK:
+		case VK_FORMAT_BC7_SRGB_BLOCK:
+		    return VK_FORMAT_ETC2_R8G8B8A8_SRGB_BLOCK;
+		case VK_FORMAT_BC1_RGB_UNORM_BLOCK:
+		case VK_FORMAT_BC1_RGBA_UNORM_BLOCK:
+		case VK_FORMAT_BC2_UNORM_BLOCK:
+		case VK_FORMAT_BC3_UNORM_BLOCK:
+		case VK_FORMAT_BC4_UNORM_BLOCK:
+		case VK_FORMAT_BC5_UNORM_BLOCK:
+		case VK_FORMAT_BC7_UNORM_BLOCK:
+		    return VK_FORMAT_ETC2_R8G8B8A8_UNORM_BLOCK;
+		case VK_FORMAT_BC4_SNORM_BLOCK:
+		case VK_FORMAT_BC5_SNORM_BLOCK:
+			return VK_FORMAT_ETC2_R8G8B8A8_UNORM_BLOCK;
+		default:
+			return VK_FORMAT_ETC2_R8G8B8A8_UNORM_BLOCK;
+	}
 }
 
 VkFormat get_format_for_bcn_to_astc(struct device *device, VkFormat format) {
-    return VK_FORMAT_ASTC_4x4_UNORM_BLOCK; 
+    // TODO: opportunistically use RGB8
+    switch (format) {
+		case VK_FORMAT_BC1_RGB_SRGB_BLOCK:
+		case VK_FORMAT_BC1_RGBA_SRGB_BLOCK:
+		case VK_FORMAT_BC2_SRGB_BLOCK:
+		case VK_FORMAT_BC3_SRGB_BLOCK:
+		case VK_FORMAT_BC7_SRGB_BLOCK:
+		    return VK_FORMAT_ASTC_4x4_SRGB_BLOCK;
+		case VK_FORMAT_BC1_RGB_UNORM_BLOCK:
+		case VK_FORMAT_BC1_RGBA_UNORM_BLOCK:
+		case VK_FORMAT_BC2_UNORM_BLOCK:
+		case VK_FORMAT_BC3_UNORM_BLOCK:
+		case VK_FORMAT_BC4_UNORM_BLOCK:
+		case VK_FORMAT_BC5_UNORM_BLOCK:
+		case VK_FORMAT_BC7_UNORM_BLOCK:
+		    return VK_FORMAT_ASTC_4x4_UNORM_BLOCK;
+		case VK_FORMAT_BC4_SNORM_BLOCK:
+		case VK_FORMAT_BC5_SNORM_BLOCK:
+			return VK_FORMAT_ASTC_4x4_UNORM_BLOCK;
+		default:
+			return VK_FORMAT_ASTC_4x4_UNORM_BLOCK;
+	}
 }
 
 std::string vk_format_to_string(VkFormat format) {
     switch (format) {
         case VK_FORMAT_BC1_RGB_UNORM_BLOCK:       return "BC1";
-        case VK_FORMAT_BC1_RGB_SRGB_BLOCK:        return "BC1";
-        case VK_FORMAT_BC1_RGBA_UNORM_BLOCK:      return "BC1";
-        case VK_FORMAT_BC1_RGBA_SRGB_BLOCK:       return "BC1";
+        case VK_FORMAT_BC1_RGB_SRGB_BLOCK:        return "BC1s";
+        case VK_FORMAT_BC1_RGBA_UNORM_BLOCK:      return "BC1a";
+        case VK_FORMAT_BC1_RGBA_SRGB_BLOCK:       return "BC1sa";
         case VK_FORMAT_BC2_UNORM_BLOCK:           return "BC2";
-        case VK_FORMAT_BC2_SRGB_BLOCK:            return "BC2";
+        case VK_FORMAT_BC2_SRGB_BLOCK:            return "BC2s";
         case VK_FORMAT_BC3_UNORM_BLOCK:           return "BC3";
-        case VK_FORMAT_BC3_SRGB_BLOCK:            return "BC3";
+        case VK_FORMAT_BC3_SRGB_BLOCK:            return "BC3s";
         case VK_FORMAT_BC4_UNORM_BLOCK:           return "BC4";
-        case VK_FORMAT_BC4_SNORM_BLOCK:           return "BC4";
+        case VK_FORMAT_BC4_SNORM_BLOCK:           return "BC4s";
         case VK_FORMAT_BC5_UNORM_BLOCK:           return "BC5";
-        case VK_FORMAT_BC5_SNORM_BLOCK:           return "BC5";
-        case VK_FORMAT_BC6H_UFLOAT_BLOCK:         return "BC6H";
-        case VK_FORMAT_BC6H_SFLOAT_BLOCK:         return "BC6H";
+        case VK_FORMAT_BC5_SNORM_BLOCK:           return "BC5s";
+        case VK_FORMAT_BC6H_UFLOAT_BLOCK:         return "BC6";
+        case VK_FORMAT_BC6H_SFLOAT_BLOCK:         return "BC6s";
         case VK_FORMAT_BC7_UNORM_BLOCK:           return "BC7";
-        case VK_FORMAT_BC7_SRGB_BLOCK:            return "BC7";
+        case VK_FORMAT_BC7_SRGB_BLOCK:            return "BC7s";
+        case VK_FORMAT_R8G8B8A8_UNORM:            return "RGBA";
+        case VK_FORMAT_R8G8B8A8_SRGB:             return "sRGBA";
         case VK_FORMAT_ETC2_R8G8B8A8_UNORM_BLOCK: return "ETC2";
+        case VK_FORMAT_ETC2_R8G8B8A8_SRGB_BLOCK:  return "ETC2s";
         case VK_FORMAT_ASTC_4x4_UNORM_BLOCK:      return "ASTC";
+        case VK_FORMAT_ASTC_4x4_SRGB_BLOCK:       return "ASTCs";
         default: return "VK_FMT_" + std::to_string(static_cast<int>(format));
     }
 }
