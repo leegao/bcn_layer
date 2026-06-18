@@ -1,7 +1,7 @@
 {
   "file_format_version" : "1.0.0",
   "layer" : {
-    "name": "VK_LAYER_BCN_BCnLayer",
+    "name": "@LAYER_NAME@",
     "type": "GLOBAL",
     "library_path": "@JSON_LIBRARY_PATH@",
     "api_version": "1.0.0",

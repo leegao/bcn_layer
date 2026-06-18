@@ -14,10 +14,20 @@ if(NOT DEFINED LIB_INSTALL_DIR)
     set(LIB_INSTALL_DIR "lib/x86_64-linux-gnu")
 endif()
 
-if(NOT "${LIB_INSTALL_DIR}" STREQUAL "lib/x86_64-linux-gnu")
-    set(JSON_LIBRARY_PATH "./libbcn_layer.so")
-else()
-    set(JSON_LIBRARY_PATH "libbcn_layer.so")
+if(NOT DEFINED JSON_LIBRARY_PATH)
+    if(NOT "${LIB_INSTALL_DIR}" STREQUAL "lib/x86_64-linux-gnu")
+        set(JSON_LIBRARY_PATH "./libbcn_layer.so")
+    else()
+        set(JSON_LIBRARY_PATH "libbcn_layer.so")
+    endif()
+endif()
+
+if(NOT DEFINED OUT_NAME)
+    set(OUT_NAME bcn_layer)
+endif()
+
+if(NOT DEFINED LAYER_NAME)
+    set(LAYER_NAME VK_LAYER_BCN_BCnLayer)
 endif()
 
 configure_file(
@@ -160,7 +170,7 @@ add_library(bcn_layer SHARED ${SOURCES} ${SPIRV_HEADERS})
 
 set_target_properties(bcn_layer PROPERTIES
     PREFIX "lib"
-    OUTPUT_NAME "bcn_layer"
+    OUTPUT_NAME "${OUT_NAME}"
 )
 
 target_include_directories(bcn_layer PRIVATE
