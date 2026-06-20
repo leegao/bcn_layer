@@ -16,9 +16,17 @@ endif()
 
 if(NOT DEFINED JSON_LIBRARY_PATH)
     if(NOT "${LIB_INSTALL_DIR}" STREQUAL "lib/x86_64-linux-gnu")
-        set(JSON_LIBRARY_PATH "./libbcn_layer.so")
+        set(JSON_LIBRARY_PATH "./")
     else()
-        set(JSON_LIBRARY_PATH "libbcn_layer.so")
+        set(JSON_LIBRARY_PATH "")
+    endif()
+endif()
+
+if(NOT DEFINED JSON_LIBRARY32_PATH)
+    if(NOT "${LIB_INSTALL_DIR}" STREQUAL "lib/x86_64-linux-gnu")
+        set(JSON_LIBRARY32_PATH "./")
+    else()
+        set(JSON_LIBRARY32_PATH "")
     endif()
 endif()
 
@@ -26,13 +34,15 @@ if(NOT DEFINED OUT_NAME)
     set(OUT_NAME bcn_layer)
 endif()
 
-if(NOT DEFINED LAYER_NAME)
-    set(LAYER_NAME VK_LAYER_BCN_BCnLayer)
-endif()
-
 configure_file(
     "${CMAKE_CURRENT_SOURCE_DIR}/libbcn_layer.json.in"
     "${CMAKE_CURRENT_BINARY_DIR}/libbcn_layer.json"
+    @ONLY
+)
+
+configure_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/libbcn_layer32.json.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/libbcn_layer32.json"
     @ONLY
 )
 
@@ -180,5 +190,7 @@ target_include_directories(bcn_layer PRIVATE
 
 install(TARGETS bcn_layer DESTINATION ${LIB_INSTALL_DIR})
 install(FILES "${CMAKE_CURRENT_BINARY_DIR}/libbcn_layer.json" DESTINATION ${JSON_INSTALL_DIR})
+install(FILES "${CMAKE_CURRENT_BINARY_DIR}/libbcn_layer32.json" DESTINATION ${JSON_INSTALL_DIR})
+
 
 message(STATUS "Run `BCN_TRANSCODE_TO_ETC2=1 BCN_LAYER_LOG_LEVEL=info ENABLE_BCN_COMPUTE=1 VK_INSTANCE_LAYERS=VK_LAYER_KHRONOS_validation vkcube` to test the layer")

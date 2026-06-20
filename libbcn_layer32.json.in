@@ -1,9 +1,9 @@
 {
   "file_format_version" : "1.0.0",
   "layer" : {
-    "name": "VK_LAYER_BCN_BCnLayer",
+    "name": "VK_LAYER_BCN_BCnLayer32",
     "type": "GLOBAL",
-    "library_path": "@JSON_LIBRARY_PATH@libbcn_layer.so",
+    "library_path": "@JSON_LIBRARY32_PATH@libbcn_layer32.so",
     "api_version": "1.0.0",
     "implementation_version": "1",
     "description": "BCn Decompression Layer",
