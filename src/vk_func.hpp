@@ -69,6 +69,20 @@ BCnLayer_CmdCopyBufferToImage2(VkCommandBuffer commandBuffer,
                                const VkCopyBufferToImageInfo2* pCopyBufferToImageInfo);
 
 void VKAPI_CALL
+BCnLayer_CmdCopyImage2(VkCommandBuffer commandBuffer,
+                       const VkCopyImageInfo2* pCopyImageInfo);
+
+void VKAPI_CALL
+BCnLayer_CmdCopyImage(
+    VkCommandBuffer commandBuffer,
+    VkImage srcImage,
+    VkImageLayout srcImageLayout,
+    VkImage dstImage,
+    VkImageLayout dstImageLayout,
+    uint32_t regionCount,
+    const VkImageCopy* pRegions);
+
+void VKAPI_CALL
 BCnLayer_GetDeviceQueue(VkDevice device,
                         uint32_t queueFamilyIndex,
                         uint32_t queueIndex,

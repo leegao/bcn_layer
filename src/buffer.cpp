@@ -30,7 +30,7 @@ create_staging_buffer(struct device *dev, int size, VkFormat format, int width, 
 		.pNext = nullptr,
 		.flags = 0,
 		.size = static_cast<VkDeviceSize>(size),
-		.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+		.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
 		.sharingMode = VK_SHARING_MODE_EXCLUSIVE,
 		.queueFamilyIndexCount = 0,
 		.pQueueFamilyIndices = nullptr

@@ -13,6 +13,44 @@ find_image(VkImage image) {
 	return it->second.get();
 }
 
+std::string image_to_string(const image* img) {
+    if (!img) {
+        return "nullptr";
+    }
+
+    std::stringstream ss;
+    ss << "image {\n";
+    ss << "    handle: " << img->handle << "\n";
+    ss << "    format: " << img->format << "\n";
+    ss << "    transcode: " << (img->transcode_to_etc2 ? "etc2" : img->transcode_to_astc ? "astc" : "rgba") << "\n";
+    ss << "    create_info {\n";
+    ss << "      flags: " << img->create_info.flags << "\n";
+    ss << "      imageType: " << img->create_info.imageType << "\n";
+    ss << "      format: " << img->create_info.format << "\n";
+    ss << "      extent: { " 
+       << img->create_info.extent.width << ", " 
+       << img->create_info.extent.height << ", " 
+       << img->create_info.extent.depth << " }\n";
+    ss << "      mipLevels: " << img->create_info.mipLevels << "\n";
+    ss << "      arrayLayers: " << img->create_info.arrayLayers << "\n";
+    ss << "      samples: " << img->create_info.samples << "\n";
+    ss << "      tiling: " << img->create_info.tiling << "\n";
+    ss << "      usage: " << img->create_info.usage << "\n";
+    ss << "      sharingMode: " << img->create_info.sharingMode << "\n";
+    ss << "      initialLayout: " << img->create_info.initialLayout << "\n";
+    ss << "    }\n";
+    ss << "    pnexts: [";
+    for (size_t i = 0; i < img->pnexts.size(); ++i) {
+        ss << img->pnexts[i];
+        if (i < img->pnexts.size() - 1) {
+            ss << ", ";
+        }
+    }
+    ss << "]\n";
+    ss << "  }";
+    return ss.str();
+}
+
 VK_LAYER_EXPORT VkResult VKAPI_CALL
 BCnLayer_CreateImage(VkDevice device,
 					 const VkImageCreateInfo *pCreateInfo,
@@ -30,8 +68,10 @@ BCnLayer_CreateImage(VkDevice device,
 	table = dev->table;
 	bool transcode_to_etc2 = false;
 	bool transcode_to_astc = false;
+	bool decode_from_bcn = false;
 	std::vector<VkFormat> compatibleFormats; // in-place modification of VkImageFormatListCreateInfo seems to make dxvk not happy
 	if (is_supported_bcn_format(dev, pCreateInfo->format)) {
+	    decode_from_bcn = true;
 	    // TODO: Texture3D not supported for recompression at the moment
 	    transcode_to_etc2 = dev->transcode_to_etc2 && pCreateInfo->imageType != VK_IMAGE_TYPE_3D;
 		transcode_to_astc = !transcode_to_etc2 
@@ -90,8 +130,15 @@ BCnLayer_CreateImage(VkDevice device,
     image->format = pCreateInfo->format;
     image->device = dev;
     image->alloc = pAllocator;
+    image->decode_from_bcn = decode_from_bcn;
     image->transcode_to_etc2 = transcode_to_etc2;
     image->transcode_to_astc = transcode_to_astc;
+    image->create_info = create_info;
+    const VkBaseInStructure* pnext = reinterpret_cast<const VkBaseInStructure*>(create_info.pNext);
+    while (pnext != nullptr) {
+        image->pnexts.push_back(pnext->sType);
+        pnext = pnext->pNext;
+	}
 
     {
     	scoped_lock l(global_lock);
@@ -116,10 +163,10 @@ BCnLayer_CreateImageView(VkDevice device,
 		return VK_ERROR_INITIALIZATION_FAILED;
 
 	table = dev->table;
+	struct image *img = find_image(pCreateInfo->image);
 
-	if (is_supported_bcn_format(dev, pCreateInfo->format)) {
+	if (img && img->decode_from_bcn) {
 		create_info.format = get_format_for_bcn(pCreateInfo->format);
-		struct image *img = find_image(pCreateInfo->image);
 		if (img && img->transcode_to_etc2)
 			create_info.format = get_format_for_bcn_to_etc2(dev, pCreateInfo->format);
 		else if (img && img->transcode_to_astc)

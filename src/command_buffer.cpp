@@ -2,6 +2,7 @@
 #include "bcn_layer.hpp"
 #include "image.hpp"
 #include "bcn.hpp"
+#include "logger.hpp"
 
 std::unordered_map<VkCommandBuffer, std::shared_ptr<struct command_buffer>> commandBuffersMap;
 
@@ -93,6 +94,79 @@ size_t BcnBufferSize(VkFormat format, VkBufferImageCopy& copy_region) {
     return copyBlocksX * copyBlocksY * copyBlocksZ * bytesPerBlock;
 }
 
+void TranscodeAndCopyBufferToImage(
+    struct device* dev,
+    struct command_buffer* cb,
+    struct buffer* srcBuffer,
+    struct image* dstImg,
+    VkImageLayout dstImageLayout,
+    const VkBufferImageCopy& region,
+    bool use_image_view,
+    bool add_watermark)
+{
+    const VkLayerDispatchTable& table = dev->table;
+    VkFormat format = dstImg->format;
+
+    bool enable_transcode = dstImg->transcode_to_etc2 || dstImg->transcode_to_astc;
+    int texel_size = enable_transcode ? 1 : is_bc6(format) ? 8 : 4;
+    VkFormat target_format = dstImg->transcode_to_etc2 ? get_format_for_bcn_to_etc2(dev, format)
+        : dstImg->transcode_to_astc ? get_format_for_bcn_to_astc(dev, format) : get_format_for_bcn(format);
+
+    VkBufferImageCopy copy_region = region;
+    int w = copy_region.imageExtent.width;                                                                     
+    int h = copy_region.imageExtent.height;
+    int d = copy_region.imageExtent.depth;
+
+    VkDeviceSize bcn_buffer_size = BcnBufferSize(format, copy_region);
+    if (!dev->dump_buffers_path.empty() && d == 1) {
+        auto bcn_buffer = create_staging_buffer(dev, bcn_buffer_size, format, w, h);
+        VkBufferCopy buffer_copy_region {
+            .srcOffset = copy_region.bufferOffset,
+            .dstOffset = 0,
+            .size = bcn_buffer_size,
+        };
+        table.CmdCopyBuffer(cb->handle, srcBuffer->handle, bcn_buffer->handle, 1, &buffer_copy_region);
+        cb->currentStagingResources->AddStagingBuffer(std::move(bcn_buffer));
+    }
+
+    if (d == 1 || enable_transcode) {
+        use_image_view = false;
+    }
+
+    if (use_image_view) {
+        decompress_bcn_compute(dev, cb->handle, format, &copy_region, srcBuffer, nullptr, dstImg, dstImageLayout, add_watermark);
+    } else {
+        int size = w * h * d * texel_size;
+        auto staging_buf = create_staging_buffer(dev, size, target_format, w, h);
+
+        decompress_bcn_compute(dev, cb->handle, format, &copy_region, srcBuffer, staging_buf.get(), dstImg, dstImageLayout, add_watermark);
+        
+        VkBufferMemoryBarrier bufferBarrier = {
+            .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
+            .pNext = nullptr,
+            .srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT,
+            .dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT,
+            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .buffer = staging_buf->handle,
+            .offset = 0,
+            .size = VK_WHOLE_SIZE
+        };
+    
+        table.CmdPipelineBarrier(cb->handle,
+            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 
+            0, 0, nullptr, 1, &bufferBarrier, 0, nullptr);
+    
+        copy_region.bufferOffset = 0;
+        copy_region.bufferRowLength = 0;
+        copy_region.bufferImageHeight = 0;
+
+        table.CmdCopyBufferToImage(cb->handle,
+            staging_buf->handle, dstImg->handle, dstImageLayout, 1, &copy_region);
+        cb->currentStagingResources->AddStagingBuffer(std::move(staging_buf));
+    }
+}
+
 VK_LAYER_EXPORT void VKAPI_CALL
 BCnLayer_CmdCopyBufferToImage(VkCommandBuffer commandBuffer,
 						      VkBuffer srcBuffer,
@@ -100,115 +174,236 @@ BCnLayer_CmdCopyBufferToImage(VkCommandBuffer commandBuffer,
 						      VkImageLayout dstImageLayout,
 						      uint32_t regionCount,
 						      const VkBufferImageCopy *pRegions)
-{
-	VkLayerDispatchTable table;
-	VkResult result;
-
-	struct command_buffer *cb = get_command_buffer(commandBuffer);
-	struct device *dev = cb->device;
-	struct image *img = find_image(dstImage);
-	struct buffer *buf = find_buffer(srcBuffer);
-	VkFormat format = img->format;
-	int texel_size = (img->transcode_to_etc2 || img->transcode_to_astc) ? 1 : is_bc6(format) ? 8 : 4;
-	VkFormat target_format = img->transcode_to_etc2 ? get_format_for_bcn_to_etc2(dev, format)
-		: img->transcode_to_astc ? get_format_for_bcn_to_astc(dev, format) : get_format_for_bcn(format);
-
-	table = dev->table;
-	
-	if (!img || !buf || !is_supported_bcn_format(dev, format)) {
-		table.CmdCopyBufferToImage(commandBuffer,
-			srcBuffer, dstImage, dstImageLayout, regionCount, pRegions);
-		return;
-	}
-
-	for (uint32_t i = 0; i < regionCount; i++) {
-		VkBufferImageCopy copy_region = pRegions[i];
-		int w = copy_region.imageExtent.width;                                                         
-       	int h = copy_region.imageExtent.height;
-        int d = copy_region.imageExtent.depth;
-
-       	VkDeviceSize bcn_buffer_size = BcnBufferSize(format, copy_region);
-		if (!dev->dump_buffers_path.empty() && copy_region.imageExtent.depth == 1) {
-		    auto bcn_buffer = create_staging_buffer(dev, bcn_buffer_size, format, w, h);
-			VkBufferCopy buffer_copy_region {
-			    .srcOffset = copy_region.bufferOffset,
-				.dstOffset = 0,
-				.size = bcn_buffer_size,
-			};
-            table.CmdCopyBuffer(commandBuffer, srcBuffer, bcn_buffer->handle, 1, &buffer_copy_region);
-		    cb->currentStagingResources->AddStagingBuffer(std::move(bcn_buffer));
-		}
-
-		// UE4 games frequently use 3D textures, which we don't support in the iv shaders yet
-		if (dev->use_image_view && copy_region.imageExtent.depth == 1) {
-			decompress_bcn_compute(dev, commandBuffer, format, &copy_region, buf, nullptr, img, dstImageLayout);
-		} else {
-        	int size = w * h * d * texel_size;
-        	auto staging_buf = create_staging_buffer(dev, size, target_format, w, h);
-
-        	decompress_bcn_compute(dev, commandBuffer, format, &copy_region, buf, staging_buf.get(), img, dstImageLayout);
-        	
-			VkBufferMemoryBarrier bufferBarrier = {
-				.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
-				.pNext = nullptr,
-		    	.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT,
-		    	.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT,
-		    	.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-		    	.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-		    	.buffer = staging_buf->handle,
-		    	.offset = 0,
-		    	.size = VK_WHOLE_SIZE
-			};
-		
-			table.CmdPipelineBarrier(commandBuffer,
-				VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 
-				0, 0, nullptr, 1, &bufferBarrier, 0, nullptr);
-	    
-			copy_region.bufferOffset = 0;
-			copy_region.bufferRowLength = 0;
-			copy_region.bufferImageHeight = 0;
-
-			table.CmdCopyBufferToImage(commandBuffer,
-				staging_buf->handle, dstImage, dstImageLayout, 1, &copy_region);
-			cb->currentStagingResources->AddStagingBuffer(std::move(staging_buf));
-		}
-	}
+{    
+    struct command_buffer *cb = get_command_buffer(commandBuffer);
+    struct device *dev = cb->device;
+    struct image *img = find_image(dstImage);
+    struct buffer *buf = find_buffer(srcBuffer);
+    if (!img || !buf || !img->decode_from_bcn) {
+       	dev->table.CmdCopyBufferToImage(commandBuffer,
+            srcBuffer, dstImage, dstImageLayout, regionCount, pRegions);
+        return;
+    }
+    
+    for (uint32_t i = 0; i < regionCount; i++) {
+        TranscodeAndCopyBufferToImage(dev, cb, buf, img,
+            dstImageLayout, pRegions[i], dev->use_image_view, dev->add_watermark);
+    }
 }
 
 VK_LAYER_EXPORT void VKAPI_CALL
 BCnLayer_CmdCopyBufferToImage2(VkCommandBuffer commandBuffer, 
                                const VkCopyBufferToImageInfo2* pCopyBufferToImageInfo)
 {
-	VkResult result;
+    struct command_buffer *cb = get_command_buffer(commandBuffer);
+    struct device *dev = cb->device;
+    auto dstImage = pCopyBufferToImageInfo->dstImage;
+    struct image *img = find_image(dstImage);
+    auto srcBuffer = pCopyBufferToImageInfo->srcBuffer;
+    struct buffer *buf = find_buffer(srcBuffer);
+    auto dstImageLayout = pCopyBufferToImageInfo->dstImageLayout;
+    auto regionCount = pCopyBufferToImageInfo->regionCount;
+    auto pRegions = pCopyBufferToImageInfo->pRegions;
 
-	struct command_buffer *cb = get_command_buffer(commandBuffer);
-	struct device *dev = cb->device;
-	auto dstImage = pCopyBufferToImageInfo->dstImage;
-	struct image *img = find_image(dstImage);
-	auto srcBuffer = pCopyBufferToImageInfo->srcBuffer;
-	struct buffer *buf = find_buffer(srcBuffer);
-	VkFormat format = img->format;
-	auto dstImageLayout = pCopyBufferToImageInfo->dstImageLayout;
-	auto regionCount = pCopyBufferToImageInfo->regionCount;
-	auto pRegions = pCopyBufferToImageInfo->pRegions;
+    if (!img || !buf || !img->decode_from_bcn) {
+        dev->table.CmdCopyBufferToImage2(commandBuffer, pCopyBufferToImageInfo);
+        return;
+    }
 
-	if (!img || !buf || !is_supported_bcn_format(dev, format)) {
-		dev->table.CmdCopyBufferToImage2(commandBuffer, pCopyBufferToImageInfo);
-		return;
-	}
+    // Emulate this using BCnLayer_CmdCopyBufferToImage since there are no valid pNexts
+    for (uint32_t i = 0; i < regionCount; i++) {
+        VkBufferImageCopy region {
+            .bufferOffset = pRegions[i].bufferOffset,
+            .bufferRowLength = pRegions[i].bufferRowLength,
+            .bufferImageHeight = pRegions[i].bufferImageHeight,
+            .imageSubresource = pRegions[i].imageSubresource,
+            .imageOffset = pRegions[i].imageOffset,
+            .imageExtent = pRegions[i].imageExtent,
+        };
+        TranscodeAndCopyBufferToImage(dev, cb, buf, img, dstImageLayout,
+            region, dev->use_image_view, dev->add_watermark);
+    }
+}
 
-	// Emulate this using BCnLayer_CmdCopyBufferToImage since there are no valid pNexts
-	std::vector<VkBufferImageCopy> regions(regionCount);
-	for (uint32_t i = 0; i < regionCount; i++) {
-		regions[i] = {
-		    .bufferOffset = pRegions[i].bufferOffset,
-		    .bufferRowLength = pRegions[i].bufferRowLength,
-		    .bufferImageHeight = pRegions[i].bufferImageHeight,
-		    .imageSubresource = pRegions[i].imageSubresource,
-		    .imageOffset = pRegions[i].imageOffset,
-		    .imageExtent = pRegions[i].imageExtent,
-		};
-	}
+// TODO(leegao): auto-generate these
+template <typename T>
+std::string copy_image_info2_to_string(const int regionCount, const T* regions) {
+    static_assert(std::is_same<T, VkImageCopy>::value || 
+                  std::is_same<T, VkImageCopy2>::value, 
+                  "Unsupported type passed to copy_image_info2_to_string");
+    if (!regions) {
+        return "nullptr";
+    }
+    std::stringstream ss;
+    ss << "VkCopyImageInfo {\n";
+    if (regions && regionCount > 0) {
+        ss << "  pRegions: [\n";
+        for (uint32_t i = 0; i < regionCount; ++i) {
+            const auto& region = regions[i];
+            ss << "    [" << i << "] {\n";
+            ss << "      srcOffset: { " << region.srcOffset.x << ", " << region.srcOffset.y << ", " << region.srcOffset.z << " }\n";
+            ss << "      dstOffset: { " << region.dstOffset.x << ", " << region.dstOffset.y << ", " << region.dstOffset.z << " }\n";
+            ss << "      extent: { " << region.extent.width << ", " << region.extent.height << ", " << region.extent.depth << " }\n";
+            ss << "    }\n";
+        }
+        ss << "  ]\n";
+    }
+    ss << "}";
+    return ss.str();
+}
 
-	BCnLayer_CmdCopyBufferToImage(commandBuffer, srcBuffer, dstImage, dstImageLayout, regionCount, regions.data());
+template <typename T>
+void TranscodeAndCopyBcnImageToImage(struct device* dev,
+                                     struct command_buffer* cb,
+                                     struct image* srcImg,
+                                     struct image* dstImg,
+                                     VkImageLayout srcImageLayout,
+                                     VkImageLayout dstImageLayout,
+                                     const T& image_region) {
+    static_assert(std::is_same<T, VkImageCopy>::value || 
+                  std::is_same<T, VkImageCopy2>::value, 
+                  "Unsupported type passed to TranscodeAndCopyImageToImage");
+    const VkLayerDispatchTable& table = dev->table;
+    VkBufferImageCopy fake_pixel_region = {
+        .imageExtent = {
+            // map from BCn (4x4) blocks to pixels
+            .width = image_region.extent.width * 4,
+            .height = image_region.extent.height * 4,
+            .depth = image_region.extent.depth,
+        }
+    };
+
+    VkDeviceSize raw_bcn_buffer_size = BcnBufferSize(dstImg->format, fake_pixel_region);
+    auto staging_block_buf = create_staging_buffer(dev, raw_bcn_buffer_size, srcImg->format, 
+                                                    image_region.extent.width, image_region.extent.height);
+    VkBufferImageCopy copy_image_to_buffer_region = {
+        .imageSubresource = image_region.srcSubresource,
+        .imageOffset = image_region.srcOffset,
+        .imageExtent = image_region.extent
+    };
+
+    table.CmdCopyImageToBuffer(cb->handle, srcImg->handle, srcImageLayout, 
+                                staging_block_buf->handle, 1, &copy_image_to_buffer_region);
+
+    VkBufferMemoryBarrier buffer_memory_barrier = {
+        .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
+        .srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
+        .dstAccessMask = VK_ACCESS_SHADER_READ_BIT,
+        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .buffer = staging_block_buf->handle,
+        .offset = 0,
+        .size = VK_WHOLE_SIZE
+    };
+
+    table.CmdPipelineBarrier(cb->handle,
+                             VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 
+                             0, 0, nullptr, 1, &buffer_memory_barrier, 0, nullptr);
+
+    VkBufferImageCopy transcode_region = {
+        .imageSubresource = image_region.dstSubresource,
+        .imageOffset = {
+            image_region.dstOffset.x,
+            image_region.dstOffset.y,
+            image_region.dstOffset.z
+        },
+        .imageExtent = {
+            image_region.extent.width * 4,
+            image_region.extent.height * 4,
+            image_region.extent.depth
+        }
+    };
+
+    TranscodeAndCopyBufferToImage(dev, cb, staging_block_buf.get(), 
+                                  dstImg, dstImageLayout, transcode_region, false, dev->add_watermark);
+
+    cb->currentStagingResources->AddStagingBuffer(std::move(staging_block_buf));
+}
+
+VK_LAYER_EXPORT void VKAPI_CALL
+BCnLayer_CmdCopyImage2(
+    VkCommandBuffer commandBuffer,
+    const VkCopyImageInfo2* pCopyImageInfo)
+{
+    struct command_buffer *cb = get_command_buffer(commandBuffer);
+    struct device *dev = cb->device;
+    struct image *srcImg = find_image(pCopyImageInfo->srcImage);
+    struct image *dstImg = find_image(pCopyImageInfo->dstImage);
+
+    if (!srcImg || !dstImg || !(srcImg->decode_from_bcn || dstImg->decode_from_bcn)) {
+       	dev->table.CmdCopyImage2(commandBuffer, pCopyImageInfo);
+       	return;
+    }
+
+    if (srcImg->format == dstImg->format) {
+        // BCn -> BCn can be done via a direct vkCmdCopyImage
+        dev->table.CmdCopyImage2(commandBuffer, pCopyImageInfo);
+       	return;
+    }
+
+    Logger::log("info", "vkCmdCopyImage2 with incompatible formats src format: %d, dst format: %d",
+        srcImg->format, dstImg->format);
+    Logger::log("info", "  > pCopyImageInfo: %s",
+        copy_image_info2_to_string(pCopyImageInfo->regionCount, pCopyImageInfo->pRegions).c_str());
+    // Logger::log("info", "  > srcImage: %s", image_to_string(srcImg).c_str());
+    // Logger::log("info", "  > dstImage: %s", image_to_string(dstImg).c_str());
+
+    // TODO(leegao): implement the copy-from case to dump valid BCn data back somehow
+    if (srcImg->decode_from_bcn) {
+        Logger::log("error", "Copying from a decoded BCn texture is not currently supported");
+        dev->table.CmdCopyImage2(commandBuffer, pCopyImageInfo);
+        return;
+    }
+
+    for (uint32_t i = 0; i < pCopyImageInfo->regionCount; i++) {
+        const auto& image_region = pCopyImageInfo->pRegions[i];
+        TranscodeAndCopyBcnImageToImage(dev, cb, srcImg, dstImg, pCopyImageInfo->srcImageLayout,
+            pCopyImageInfo->dstImageLayout, image_region);
+    }
+}
+
+VK_LAYER_EXPORT void VKAPI_CALL
+BCnLayer_CmdCopyImage(
+    VkCommandBuffer commandBuffer,
+    VkImage srcImage,
+    VkImageLayout srcImageLayout,
+    VkImage dstImage,
+    VkImageLayout dstImageLayout,
+    uint32_t regionCount,
+    const VkImageCopy* pRegions)
+{
+    struct command_buffer *cb = get_command_buffer(commandBuffer);
+    struct device *dev = cb->device;
+    struct image *srcImg = find_image(srcImage);
+    struct image *dstImg = find_image(dstImage);
+
+    if (!srcImg || !dstImg || !(srcImg->decode_from_bcn || dstImg->decode_from_bcn)) {
+       	dev->table.CmdCopyImage(commandBuffer, srcImage, srcImageLayout, dstImage, dstImageLayout, regionCount, pRegions);
+       	return;
+    }
+
+    if (srcImg->format == dstImg->format) {
+        // BCn -> BCn can be done via a direct vkCmdCopyImage
+        dev->table.CmdCopyImage(commandBuffer, srcImage, srcImageLayout, dstImage, dstImageLayout, regionCount, pRegions);
+       	return;
+    }
+
+    Logger::log("info", "vkCmdCopyImage with incompatible formats src format: %d, dst format: %d",
+        srcImg->format, dstImg->format);
+    Logger::log("info", "  > pCopyImageInfo: %s",
+        copy_image_info2_to_string(regionCount, pRegions).c_str());
+    // Logger::log("info", "  > srcImage: %s", image_to_string(srcImg).c_str());
+    // Logger::log("info", "  > dstImage: %s", image_to_string(dstImg).c_str());
+
+    // TODO(leegao): implement the copy-from case to dump valid BCn data back somehow
+    if (srcImg->decode_from_bcn) {
+        Logger::log("error", "Copying from a decoded BCn texture is not currently supported");
+        dev->table.CmdCopyImage(commandBuffer, srcImage, srcImageLayout, dstImage, dstImageLayout, regionCount, pRegions);
+        return;
+    }
+
+    for (uint32_t i = 0; i < regionCount; i++) {
+        const auto& image_region = pRegions[i];
+        TranscodeAndCopyBcnImageToImage(dev, cb, srcImg, dstImg, srcImageLayout, dstImageLayout, image_region);
+    }
 }

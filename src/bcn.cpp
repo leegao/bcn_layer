@@ -993,15 +993,16 @@ add_debug_watermark(struct device *dev,
 	return VK_SUCCESS;
 }
 
-VkResult
-decompress_bcn_compute(struct device *dev,
-		       		   VkCommandBuffer commandbuffer,
-		       		   VkFormat format,
-		       		   VkBufferImageCopy *copy_region,
-		       		   struct buffer *srcBuffer,
-		       		   struct buffer *stagingBuffer,
-		       		   struct image *dstImage,
-		       		   VkImageLayout dstImageLayout)
+
+VkResult decompress_bcn_compute(struct device *dev,
+                       VkCommandBuffer commandbuffer,
+                       VkFormat format,
+                       VkBufferImageCopy *copy_region,
+                       struct buffer *srcBuffer,
+                       struct buffer *stagingBuffer,
+                       struct image *dstImage,
+                       VkImageLayout dstImageLayout,
+                       bool add_watermark)
 {
 	VkResult result;
 	VkLayerDispatchTable table;
@@ -1030,7 +1031,7 @@ decompress_bcn_compute(struct device *dev,
 	int use_etc2 = dstImage->transcode_to_etc2;
 	int use_astc = dstImage->transcode_to_astc;
 	// TODO: add support for rgba16_sfloat
-	int add_watermark = dev->add_watermark && depth == 1 && get_format_for_bcn(format) != VK_FORMAT_R16G16B16A16_SFLOAT;
+	add_watermark = add_watermark && depth == 1 && get_format_for_bcn(format) != VK_FORMAT_R16G16B16A16_SFLOAT;
 
 	std::unique_ptr<struct buffer> decodedBuffer;
 	if (use_etc2 || use_astc) {

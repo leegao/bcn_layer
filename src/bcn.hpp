@@ -46,7 +46,8 @@ VkResult decompress_bcn_compute(struct device *dev,
                        			struct buffer *srcBuffer,
                        			struct buffer *stagingBuffer,
                        			struct image *dstImage,
-                       			VkImageLayout dstImageLayout);
+                       			VkImageLayout dstImageLayout,
+                                bool add_watermark);
 VkResult encode_astc_compute(struct device *dev,
                              struct command_buffer *cb,
                              VkFormat format,

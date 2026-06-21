@@ -756,6 +756,9 @@ BCnLayer_CreateDevice(VkPhysicalDevice physicalDevice,
     table.CmdCopyBufferToImage = (PFN_vkCmdCopyBufferToImage)gdpa(*pDevice, "vkCmdCopyBufferToImage");
     table.CmdCopyBufferToImage2 = (PFN_vkCmdCopyBufferToImage2)gdpa(*pDevice, "vkCmdCopyBufferToImage2");
     table.CmdCopyBuffer = (PFN_vkCmdCopyBuffer)gdpa(*pDevice, "vkCmdCopyBuffer");
+    table.CmdCopyImage2 = (PFN_vkCmdCopyImage2)gdpa(*pDevice, "vkCmdCopyImage2");
+    table.CmdCopyImage = (PFN_vkCmdCopyImage)gdpa(*pDevice, "vkCmdCopyImage");
+    table.CmdCopyImageToBuffer = (PFN_vkCmdCopyImageToBuffer)gdpa(*pDevice, "vkCmdCopyImageToBuffer");
     table.CmdPipelineBarrier = (PFN_vkCmdPipelineBarrier)gdpa(*pDevice, "vkCmdPipelineBarrier");
     table.DestroyDescriptorPool = (PFN_vkDestroyDescriptorPool)gdpa(*pDevice, "vkDestroyDescriptorPool");
     table.DestroyDescriptorSetLayout = (PFN_vkDestroyDescriptorSetLayout)gdpa(*pDevice, "vkDestroyDescriptorSetLayout");
@@ -912,6 +915,8 @@ BCnLayer_GetDeviceProcAddr(VkDevice device,
 	GETPROCADDR(FreeCommandBuffers);
 	GETPROCADDR(CmdCopyBufferToImage);
 	GETPROCADDR(CmdCopyBufferToImage2);
+	GETPROCADDR(CmdCopyImage2);
+	GETPROCADDR(CmdCopyImage);
 	GETPROCADDR(GetDeviceQueue);
 	GETPROCADDR(QueueSubmit);
 	GETPROCADDR(QueueSubmit2);
