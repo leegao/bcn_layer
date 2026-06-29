@@ -44,11 +44,24 @@ create_staging_buffer(struct device *dev, int size, VkFormat format, int width, 
 	}
 	VkMemoryRequirements mem_reqs;
     table.GetBufferMemoryRequirements(device, buffer, &mem_reqs);
+
+    uint32_t memory_idx;
+    uint32_t idx;
+    for (idx = 0; idx < dev->memoryProps.memoryTypeCount; idx++) {
+        bool isCompatible = (mem_reqs.memoryTypeBits & (1 << idx)) != 0;
+        bool hasProperties = 
+            (dev->memoryProps.memoryTypes[idx].propertyFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) != 0;
+        if (isCompatible && hasProperties) {
+            memory_idx = idx;
+            break;
+        }
+    }
+
     VkMemoryAllocateInfo allocate_info = {
         .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
         .pNext = nullptr,
         .allocationSize = mem_reqs.size,
-        .memoryTypeIndex = dev->memoryIndex
+        .memoryTypeIndex = memory_idx < dev->memoryProps.memoryTypeCount ? memory_idx : UINT32_MAX,
     };
 
 
