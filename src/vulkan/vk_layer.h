@@ -178,6 +178,8 @@ typedef struct VkLayerDispatchTable_ {
     PFN_vkCmdDebugMarkerBeginEXT CmdDebugMarkerBeginEXT;
     PFN_vkCmdDebugMarkerEndEXT CmdDebugMarkerEndEXT;
     PFN_vkCmdDebugMarkerInsertEXT CmdDebugMarkerInsertEXT;
+    PFN_vkGetDeviceFaultInfoEXT GetDeviceFaultInfoEXT;
+    void (*DeviceSetApiDumpState)(VkDevice, bool);
 } VkLayerDispatchTable;
 
 typedef struct VkLayerInstanceDispatchTable_ {

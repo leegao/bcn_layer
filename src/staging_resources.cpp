@@ -3,10 +3,74 @@
 #include "bcn.hpp"
 #include "bcn_layer.hpp"
 #include "buffer.hpp"
+#include "logger.hpp"
 #include <cstdint>
 #include <fstream>
 #include <sstream>
 #include <map>
+
+void LogDeviceFault(struct device *dev, const char* call) {
+    Logger::log("error", "FATAL: %s failed with a GPU fault, the game will now crash", call);
+
+    if (!dev->table.GetDeviceFaultInfoEXT) {
+        Logger::log("error", "+ vkGetDeviceFaultInfoEXT is not available, cannot dump vendor specific fault info");
+        return;
+    }
+
+    VkDeviceFaultCountsEXT fault_counts = {
+        .sType = VK_STRUCTURE_TYPE_DEVICE_FAULT_COUNTS_EXT,
+    };
+    VkResult result = dev->table.GetDeviceFaultInfoEXT(dev->handle, &fault_counts, NULL);
+    if (result != VK_SUCCESS) {
+        return;
+    }
+
+    if (fault_counts.addressInfoCount == 0 &&
+        fault_counts.vendorInfoCount == 0 &&
+        fault_counts.vendorBinarySize == 0) {
+        Logger::log("error", "+ Device lost, but no fault info was recorded by the driver.");
+        return;
+    }
+
+    VkDeviceFaultInfoEXT fault_info = {
+        .sType = VK_STRUCTURE_TYPE_DEVICE_FAULT_INFO_EXT,
+    };
+
+    std::vector<VkDeviceFaultAddressInfoEXT> addressInfos(fault_counts.addressInfoCount);
+    std::vector<VkDeviceFaultVendorInfoEXT> vendorInfos(fault_counts.vendorInfoCount);
+    std::vector<char> vendorBinaryData(fault_counts.vendorBinarySize);
+
+    fault_info.pAddressInfos = addressInfos.data();
+    fault_info.pVendorInfos = vendorInfos.data();
+    fault_info.pVendorBinaryData = vendorBinaryData.data();
+
+    result = dev->table.GetDeviceFaultInfoEXT(dev->handle, &fault_counts, &fault_info);
+    if (result == VK_SUCCESS) {
+        Logger::log("error", "--- VULKAN DEVICE FAULT DETECTED ---");
+        Logger::log("error", "Description: %s", fault_info.description);
+        
+        for (uint32_t i = 0; i < fault_counts.addressInfoCount; i++) {
+            Logger::log("error", ".pAddressInfos[%d]", i);
+            Logger::log("error", "  addressType: %d", fault_info.pAddressInfos[i].addressType);
+            Logger::log("error", "  reportedAddress: %llu", fault_info.pAddressInfos[i].reportedAddress);
+            Logger::log("error", "  addressPrecision: %llu", fault_info.pAddressInfos[i].addressPrecision);
+        }
+        for (uint32_t i = 0; i < fault_counts.vendorInfoCount; i++) {
+            Logger::log("error", ".pVendorInfos[%d]", i);
+            Logger::log("error", "  description: %s", fault_info.pVendorInfos[i].description);
+            Logger::log("error", "  vendorFaultCode: %llu", fault_info.pVendorInfos[i].vendorFaultCode);
+            Logger::log("error", "  vendorFaultData: %llu", fault_info.pVendorInfos[i].vendorFaultData);
+        }
+        if (fault_info.pVendorBinaryData && fault_counts.vendorBinarySize > 0) {
+            Logger::log("error", "  Vendor binary crash dump retrieved (%llu bytes).", fault_counts.vendorBinarySize);
+            // hex dump
+            for (uint32_t i = 0; i < fault_counts.vendorBinarySize; i++) {
+                Logger::log("error", "  %02x", vendorBinaryData[i]);
+            }
+        }
+        Logger::log("error", "--- END FAULT INFO ---");
+    }
+}
 
 std::pair<VkSemaphore, VkFence> StagingResources::MakeFence() {
     auto *dev = get_device(device);
@@ -26,7 +90,13 @@ void StagingResources::WaitForCompletion() {
     if (has_completed) return;
     auto *dev = get_device(device);
     if (!dev) return;
-    dev->table.WaitForFences(device, 1, &completed, VK_TRUE, UINT64_MAX);
+    VkResult result = dev->table.WaitForFences(device, 1, &completed, VK_TRUE, UINT64_MAX);
+    if (result != VK_SUCCESS) {
+        Logger::log("error", "WaitForFences failed with result %d", result);
+        if (result == VK_ERROR_DEVICE_LOST){
+            LogDeviceFault(dev, "WaitForFences");
+        }
+    }
     has_completed = true;
 }
 

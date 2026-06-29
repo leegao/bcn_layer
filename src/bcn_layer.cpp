@@ -528,6 +528,20 @@ bool CheckFor8BitSupport(VkInstance instance, VkPhysicalDevice physicalDevice) {
     return storage8.storageBuffer8BitAccess && arithmetic8.shaderInt8;
 }
 
+VkPhysicalDeviceFaultFeaturesEXT CheckForFaultSupport(VkInstance instance, VkPhysicalDevice physicalDevice) {
+    VkPhysicalDeviceFaultFeaturesEXT faultFeatures = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FAULT_FEATURES_EXT,
+    };
+    VkPhysicalDeviceFeatures2 features = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
+        .pNext = &faultFeatures,
+    };
+    
+    instanceDispatch[GetKey(instance)].GetPhysicalDeviceFeatures2(physicalDevice, &features);
+
+    return faultFeatures;
+}
+
 VK_LAYER_EXPORT VkResult VKAPI_CALL
 BCnLayer_CreateDevice(VkPhysicalDevice physicalDevice,
 					  const VkDeviceCreateInfo *pCreateInfo,
@@ -595,11 +609,15 @@ BCnLayer_CreateDevice(VkPhysicalDevice physicalDevice,
         transcode_to_astc = false;
     }
 
+    auto queriedFaultFeatures = CheckForFaultSupport(instance, physicalDevice);
+    bool hasFaultSupport = queriedFaultFeatures.deviceFault;
+
     VkBaseOutStructure* ext = (VkBaseOutStructure*)createInfo.pNext;
     VkPhysicalDevice8BitStorageFeaturesKHR* app8Bit = nullptr;
     VkPhysicalDevice16BitStorageFeaturesKHR* app16Bit = nullptr;
     VkPhysicalDeviceShaderFloat16Int8FeaturesKHR* appFloat16Int8 = nullptr;
     VkPhysicalDeviceFeatures2* appFeatures2 = nullptr;
+    VkPhysicalDeviceFaultFeaturesEXT* appFaultFeatures = nullptr;
 
     while (ext) {
         if (ext->sType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_8BIT_STORAGE_FEATURES_KHR) {
@@ -610,6 +628,8 @@ BCnLayer_CreateDevice(VkPhysicalDevice physicalDevice,
             appFloat16Int8 = (VkPhysicalDeviceShaderFloat16Int8FeaturesKHR*)ext;
         } else if (ext->sType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2) {
             appFeatures2 = (VkPhysicalDeviceFeatures2*)ext;
+        } else if (ext->sType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FAULT_FEATURES_EXT) {
+            appFaultFeatures = (VkPhysicalDeviceFaultFeaturesEXT*)ext;
         }
         ext = ext->pNext;
     }
@@ -643,9 +663,30 @@ BCnLayer_CreateDevice(VkPhysicalDevice physicalDevice,
             enabledExtensions.push_back(VK_KHR_SHADER_FLOAT16_INT8_EXTENSION_NAME);
         }
     }
+    if (hasFaultSupport && !hasExtension(VK_EXT_DEVICE_FAULT_EXTENSION_NAME)) {
+        Logger::log("info", "Adding extension " VK_EXT_DEVICE_FAULT_EXTENSION_NAME);
+        enabledExtensions.push_back(VK_EXT_DEVICE_FAULT_EXTENSION_NAME);
+    }
     createInfo.ppEnabledExtensionNames = enabledExtensions.data();
     createInfo.enabledExtensionCount = static_cast<uint32_t>(enabledExtensions.size());
+    
+    VkPhysicalDeviceFaultFeaturesEXT layerFaultFeatures = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FAULT_FEATURES_EXT,
+        .deviceFault = VK_TRUE,
+        .deviceFaultVendorBinary = queriedFaultFeatures.deviceFaultVendorBinary,
+    };
 
+    if (hasFaultSupport) {
+        if (appFaultFeatures) {
+            appFaultFeatures->deviceFault = VK_TRUE;
+            appFaultFeatures->deviceFaultVendorBinary = queriedFaultFeatures.deviceFaultVendorBinary;
+        } else {
+            Logger::log("info", "Enabling VK_EXT_device_fault features");
+            layerFaultFeatures.pNext = (void*)createInfo.pNext;
+            createInfo.pNext = &layerFaultFeatures;
+        }
+    }
+    
     VkPhysicalDevice8BitStorageFeaturesKHR layer8BitFeats = {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_8BIT_STORAGE_FEATURES_KHR,
         .storageBuffer8BitAccess = VK_TRUE,
@@ -775,7 +816,13 @@ BCnLayer_CreateDevice(VkPhysicalDevice physicalDevice,
     table.CmdWriteTimestamp = (PFN_vkCmdWriteTimestamp)gdpa(*pDevice, "vkCmdWriteTimestamp");
     table.GetQueryPoolResults = (PFN_vkGetQueryPoolResults)gdpa(*pDevice, "vkGetQueryPoolResults");
     table.DestroyQueryPool = (PFN_vkDestroyQueryPool)gdpa(*pDevice, "vkDestroyQueryPool");
+    table.DeviceSetApiDumpState = (void (*)(VkDevice, bool))gdpa(*pDevice, "vkDeviceSetApiDumpState"); // exposed by custom ApiDump layer
+    table.GetDeviceFaultInfoEXT = (PFN_vkGetDeviceFaultInfoEXT)gdpa(*pDevice, "vkGetDeviceFaultInfoEXT");
 
+    if (table.DeviceSetApiDumpState) {
+        Logger::log("info", "[DEBUG] vkDeviceSetApiDumpState (VK_LAYER_LUNARG_api_dump) is enabled");
+    }
+    
     uint32_t queueCount;
     VkQueue queue;
 
