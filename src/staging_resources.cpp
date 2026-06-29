@@ -62,10 +62,17 @@ void LogDeviceFault(struct device *dev, const char* call) {
             Logger::log("error", "  vendorFaultData: %llu", fault_info.pVendorInfos[i].vendorFaultData);
         }
         if (fault_info.pVendorBinaryData && fault_counts.vendorBinarySize > 0) {
-            Logger::log("error", "  Vendor binary crash dump retrieved (%llu bytes).", fault_counts.vendorBinarySize);
-            // hex dump
+            Logger::log("error", "Vendor binary crash dump retrieved (%llu bytes).", fault_counts.vendorBinarySize);
+            std::string line_buffer;
+            line_buffer.reserve(256);
             for (uint32_t i = 0; i < fault_counts.vendorBinarySize; i++) {
-                Logger::log("error", "  %02x", vendorBinaryData[i]);
+                char byte_str[4];
+                snprintf(byte_str, sizeof(byte_str), "%02x ", vendorBinaryData[i]);
+                line_buffer += byte_str;
+                if ((i + 1) % 64 == 0 || (i + 1) == fault_counts.vendorBinarySize) {
+                    Logger::log("error", "  %s", line_buffer.c_str());
+                    line_buffer.clear();
+                }
             }
         }
         Logger::log("error", "--- END FAULT INFO ---");
