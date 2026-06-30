@@ -36,6 +36,35 @@
 #define VK_LAYER_EXPORT
 #endif
 
+#ifndef VK_VERSION_1_4
+
+typedef struct VkPushConstantsInfo {
+    VkStructureType       sType;
+    const void*           pNext;
+    VkPipelineLayout      layout;
+    VkShaderStageFlags    stageFlags;
+    uint32_t              offset;
+    uint32_t              size;
+    const void*           pValues;
+} VkPushConstantsInfo;
+
+typedef struct VkBindDescriptorSetsInfo {
+    VkStructureType           sType;
+    const void*               pNext;
+    VkShaderStageFlags        stageFlags;
+    VkPipelineLayout          layout;
+    uint32_t                  firstSet;
+    uint32_t                  descriptorSetCount;
+    const VkDescriptorSet*    pDescriptorSets;
+    uint32_t                  dynamicOffsetCount;
+    const uint32_t*           pDynamicOffsets;
+} VkBindDescriptorSetsInfo;
+
+typedef void (VKAPI_PTR *PFN_vkCmdBindDescriptorSets2)(VkCommandBuffer commandBuffer, const VkBindDescriptorSetsInfo* pBindDescriptorSetsInfo);
+typedef void (VKAPI_PTR *PFN_vkCmdPushConstants2)(VkCommandBuffer commandBuffer, const VkPushConstantsInfo* pPushConstantsInfo);
+
+#endif // VK_VERSION_1_4
+
 typedef struct VkLayerDispatchTable_ {
     PFN_vkGetDeviceProcAddr GetDeviceProcAddr;
     PFN_vkDestroyDevice DestroyDevice;
