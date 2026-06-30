@@ -91,7 +91,6 @@ struct device {
 	VkPhysicalDeviceProperties2 props2;
 	VkPhysicalDeviceFeatures features;
 	VkPhysicalDeviceDriverProperties driverProps;
-	VkPhysicalDeviceMemoryProperties memoryProps;
 	bool compute_bcn_auto;
 	VkLayerDispatchTable table;
 	VkPipeline s3tcPipeline;
@@ -105,6 +104,7 @@ struct device {
 	VkPipelineLayout etc2Layout;
 	VkPipelineLayout astcLayout;
 	VkQueue queue;
+	uint32_t memoryIndex;
 	int use_image_view = 0;
 	int transcode_to_etc1 = 0;
 	int transcode_to_etc2 = 0;

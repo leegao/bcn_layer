@@ -570,6 +570,15 @@ BCnLayer_CreateDevice(VkPhysicalDevice physicalDevice,
     if (instance == VK_NULL_HANDLE)
     	return VK_ERROR_INITIALIZATION_FAILED;
 
+    VkPhysicalDeviceMemoryProperties memoryProps{};
+    uint32_t idx;
+    uint32_t memoryIndex;
+
+    instanceDispatch[GetKey(instance)].GetPhysicalDeviceMemoryProperties(physicalDevice, &memoryProps);
+    for (idx = 0; idx < memoryProps.memoryTypeCount; idx++) {
+    	if (memoryProps.memoryTypes[idx].propertyFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)
+        	break;
+    }
     
     auto transcode_to_etc1 = getenv("BCN_TRANSCODE_TO_ETC1") ? atoi(getenv("BCN_TRANSCODE_TO_ETC1")) : 0;
     auto transcode_to_etc2 = getenv("BCN_TRANSCODE_TO_ETC2") ? atoi(getenv("BCN_TRANSCODE_TO_ETC2")) : transcode_to_etc1;
@@ -586,6 +595,8 @@ BCnLayer_CreateDevice(VkPhysicalDevice physicalDevice,
         Logger::log("info", "textureCompressionASTC_LDR is not supported, disabling ASTC transcode");
         transcode_to_astc = false;
     }
+
+    memoryIndex = idx < memoryProps.memoryTypeCount ? idx : UINT32_MAX;
 
     // Check for extensions required for the astc encoder (8 and 16 bit support)
     if (transcode_to_astc && !featuresMap[GetKey(physicalDevice)].shaderInt16) {
@@ -811,10 +822,7 @@ BCnLayer_CreateDevice(VkPhysicalDevice physicalDevice,
     if (table.DeviceSetApiDumpState) {
         Logger::log("info", "[DEBUG] vkDeviceSetApiDumpState (VK_LAYER_LUNARG_api_dump) is enabled");
     }
-
-    VkPhysicalDeviceMemoryProperties memoryProps;
-    instanceDispatch[GetKey(instance)].GetPhysicalDeviceMemoryProperties(physicalDevice, &memoryProps);
-
+    
     uint32_t queueCount;
     VkQueue queue;
 
@@ -839,9 +847,9 @@ BCnLayer_CreateDevice(VkPhysicalDevice physicalDevice,
     device->props2 = propertiesMap[GetKey(physicalDevice)];
     device->driverProps = driverPropertiesMap[GetKey(physicalDevice)];
     device->features = featuresMap[GetKey(physicalDevice)];
-    device->memoryProps = memoryProps;
     device->compute_bcn_auto = bcn_compute_auto;
     device->table = table;
+    device->memoryIndex = memoryIndex;
     device->queue = queue;
     device->alloc = pAllocator;
     device->transcode_to_etc1 = transcode_to_etc1;

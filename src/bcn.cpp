@@ -1205,6 +1205,21 @@ VkResult decompress_bcn_compute(struct device *dev,
 		table.CmdPipelineBarrier(commandbuffer, 
 			VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 
 			0, 0, nullptr, 0, nullptr, 1, &first_barrier);
+	} else {
+        VkBufferMemoryBarrier first_barrier = {
+            .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
+            .pNext = nullptr,
+            .srcAccessMask = VK_ACCESS_NONE,
+            .dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT,
+            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .buffer = srcBuffer->handle,
+            .offset = 0,
+            .size = VK_WHOLE_SIZE
+        };
+        table.CmdPipelineBarrier(commandbuffer, 
+            VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 
+            0, 0, nullptr, 1, &first_barrier, 0, nullptr);
 	}
 
 	table.CmdPushConstants(commandbuffer,
@@ -1224,10 +1239,10 @@ VkResult decompress_bcn_compute(struct device *dev,
     if (query.first != UINT32_MAX) {
         table.CmdWriteTimestamp(commandbuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, queryPool, query.first);
     }
-    table.CmdDispatch(commandbuffer, (width + 7) / 8, (height + 7) / 8, depth);
-    if (query.first != UINT32_MAX) {
-        table.CmdWriteTimestamp(commandbuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, queryPool, query.second);
-    }
+	table.CmdDispatch(commandbuffer, (width + 7) / 8, (height + 7) / 8, depth);
+	if (query.first != UINT32_MAX) {
+	    table.CmdWriteTimestamp(commandbuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, queryPool, query.second);
+	}
 
 	if (add_watermark) {
     	// srcBuffer -> [waterMarkedDecodedBuffer -> stagingBuffer] if no transcode and yes watermark
