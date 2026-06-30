@@ -174,7 +174,7 @@ BCnLayer_CmdCopyBufferToImage(VkCommandBuffer commandBuffer,
 						      VkImageLayout dstImageLayout,
 						      uint32_t regionCount,
 						      const VkBufferImageCopy *pRegions)
-{
+{    
     struct command_buffer *cb = get_command_buffer(commandBuffer);
     struct device *dev = cb->device;
     struct image *img = find_image(dstImage);
@@ -276,49 +276,12 @@ void TranscodeAndCopyBcnImageToImage(struct device* dev,
     VkDeviceSize raw_bcn_buffer_size = BcnBufferSize(dstImg->format, fake_pixel_region);
     auto staging_block_buf = create_staging_buffer(dev, raw_bcn_buffer_size, srcImg->format, 
                                                     image_region.extent.width, image_region.extent.height);
-
-    // Write some zeroes:
-    uint32_t* mappedData;
-    VkResult result = dev->table.MapMemory(dev->handle, staging_block_buf->memory, 0, VK_WHOLE_SIZE, 0, (void **) &mappedData);
-    if (result != VK_SUCCESS) {
-        Logger::log("error", "    MapMemory failed: %d", result);
-    }
-    VkMappedMemoryRange mapped_memory_range = {
-        .sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE,
-        .memory = staging_block_buf->memory,
-        .offset = 0,
-        .size = VK_WHOLE_SIZE,
-    };
-    dev->table.FlushMappedMemoryRanges(dev->handle, 1, &mapped_memory_range);
-    mappedData[0] = 0;
-    // mappedData[(raw_bcn_buffer_size / 4) - 1] = 0;
-    dev->table.UnmapMemory(dev->handle, staging_block_buf->memory);
-    
     VkBufferImageCopy copy_image_to_buffer_region = {
         .imageSubresource = image_region.srcSubresource,
         .imageOffset = image_region.srcOffset,
         .imageExtent = image_region.extent
     };
 
-    VkBufferMemoryBarrier buffer_barrier = {
-        .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
-        .srcAccessMask = VK_ACCESS_HOST_WRITE_BIT,
-        .dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT,
-        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .buffer = staging_block_buf->handle,
-        .offset = 0,
-        .size = VK_WHOLE_SIZE
-    };
-    
-    dev->table.CmdPipelineBarrier(
-        cb->handle,
-        VK_PIPELINE_STAGE_HOST_BIT,
-        VK_PIPELINE_STAGE_TRANSFER_BIT,
-        0, 0, nullptr,
-        1, &buffer_barrier,
-        0, nullptr
-    );
     table.CmdCopyImageToBuffer(cb->handle, srcImg->handle, srcImageLayout, 
                                 staging_block_buf->handle, 1, &copy_image_to_buffer_region);
 
