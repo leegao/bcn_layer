@@ -118,6 +118,7 @@ typedef struct VkLayerDispatchTable_ {
     PFN_vkResetCommandBuffer ResetCommandBuffer;
     PFN_vkCmdBindPipeline CmdBindPipeline;
     PFN_vkCmdBindDescriptorSets CmdBindDescriptorSets;
+    PFN_vkCmdBindDescriptorSets2 CmdBindDescriptorSets2;
     PFN_vkCmdBindVertexBuffers CmdBindVertexBuffers;
     PFN_vkCmdBindIndexBuffer CmdBindIndexBuffer;
     PFN_vkCmdSetViewport CmdSetViewport;
@@ -158,6 +159,7 @@ typedef struct VkLayerDispatchTable_ {
     PFN_vkCmdWriteTimestamp CmdWriteTimestamp;
     PFN_vkCmdCopyQueryPoolResults CmdCopyQueryPoolResults;
     PFN_vkCmdPushConstants CmdPushConstants;
+    PFN_vkCmdPushConstants2 CmdPushConstants2;
     PFN_vkCmdBeginRenderPass CmdBeginRenderPass;
     PFN_vkCmdNextSubpass CmdNextSubpass;
     PFN_vkCmdEndRenderPass CmdEndRenderPass;
@@ -191,7 +193,7 @@ typedef struct VkLayerInstanceDispatchTable_ {
     PFN_vkGetPhysicalDeviceImageFormatProperties
         GetPhysicalDeviceImageFormatProperties;
     PFN_vkGetPhysicalDeviceImageFormatProperties2
-    	GetPhysicalDeviceImageFormatProperties2;     
+    	GetPhysicalDeviceImageFormatProperties2;
     PFN_vkGetPhysicalDeviceFormatProperties GetPhysicalDeviceFormatProperties;
     PFN_vkGetPhysicalDeviceSparseImageFormatProperties
         GetPhysicalDeviceSparseImageFormatProperties;

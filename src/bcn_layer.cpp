@@ -28,10 +28,10 @@ struct device *
 get_device(VkDevice device)
 {
     auto it = deviceMap.find(GetKey(device));
-    
+
 	if (it == deviceMap.end())
 		return nullptr;
-	
+
 	return it->second.get();
 }
 
@@ -150,9 +150,9 @@ BCnLayer_CreateInstance(const VkInstanceCreateInfo *pCreateInfo,
 {
 	VkLayerInstanceCreateInfo *layerCreateInfo = (VkLayerInstanceCreateInfo *)pCreateInfo->pNext;
 	VkResult result;
-	
+
     while (layerCreateInfo && (layerCreateInfo->sType != VK_STRUCTURE_TYPE_LOADER_INSTANCE_CREATE_INFO |
-    						   layerCreateInfo->function != VK_LAYER_LINK_INFO)) 
+    						   layerCreateInfo->function != VK_LAYER_LINK_INFO))
     {
     	layerCreateInfo = (VkLayerInstanceCreateInfo *)layerCreateInfo->pNext;
     }
@@ -160,7 +160,7 @@ BCnLayer_CreateInstance(const VkInstanceCreateInfo *pCreateInfo,
     if (!layerCreateInfo)
         return VK_ERROR_INITIALIZATION_FAILED;
 
-    
+
     PFN_vkGetInstanceProcAddr gip = layerCreateInfo->u.pLayerInfo->pfnNextGetInstanceProcAddr;
 	layerCreateInfo->u.pLayerInfo = layerCreateInfo->u.pLayerInfo->pNext;
 
@@ -191,20 +191,20 @@ BCnLayer_CreateInstance(const VkInstanceCreateInfo *pCreateInfo,
     {
     	scoped_lock l(global_lock);
     	instanceDispatch[GetKey(*pInstance)] = table;
-    	instanceMap[GetKey(*pInstance)] = *pInstance;	
+    	instanceMap[GetKey(*pInstance)] = *pInstance;
     }
 
     return VK_SUCCESS;
 }
 
 VK_LAYER_EXPORT void VKAPI_CALL
-BCnLayer_DestroyInstance(VkInstance instance, 
+BCnLayer_DestroyInstance(VkInstance instance,
 						 const VkAllocationCallbacks *pAllocator)
 {
 	scoped_lock l(global_lock);
 	if (!instance)
 		return;
-		
+
 	VkLayerInstanceDispatchTable table = instanceDispatch[GetKey(instance)];
 	table.DestroyInstance(instance, pAllocator);
 	instanceMap.erase(GetKey(instance));
@@ -240,7 +240,7 @@ BCnLayer_EnumeratePhysicalDevices(VkInstance instance,
 		propertiesMap[GetKey(pPhysicalDevices[index])] = props2;
 		driverPropertiesMap[GetKey(pPhysicalDevices[index])] = driverProperties;
 	}
-	
+
 	return VK_SUCCESS;
 }
 
@@ -277,7 +277,7 @@ BCnLayer_GetPhysicalDeviceImageFormatProperties(VkPhysicalDevice physicalDevice,
 
 	VkPhysicalDeviceProperties2 props2 = propertiesMap[GetKey(physicalDevice)];
 	VkPhysicalDeviceDriverProperties driverProps = driverPropertiesMap[GetKey(physicalDevice)];
-	
+
 	switch(format) {
     	case VK_FORMAT_BC1_RGB_UNORM_BLOCK:
    		case VK_FORMAT_BC1_RGB_SRGB_BLOCK:
@@ -298,11 +298,11 @@ BCnLayer_GetPhysicalDeviceImageFormatProperties(VkPhysicalDevice physicalDevice,
    		case VK_FORMAT_BC7_UNORM_BLOCK:
    		case VK_FORMAT_BC7_SRGB_BLOCK:
    		    if (bcn_compute_auto && ((driverProps.driverID == VK_DRIVER_ID_QUALCOMM_PROPRIETARY && props2.properties.driverVersion > VK_MAKE_VERSION(512, 530, 0)) ||
-   		                             driverProps.driverID == VK_DRIVER_ID_MESA_TURNIP)) 
+   		                             driverProps.driverID == VK_DRIVER_ID_MESA_TURNIP))
    		    {
    		    	break;
    		    }
-   		      
+
    			if (type & VK_IMAGE_TYPE_1D) {
    				pImageFormatProperties->maxExtent.width = props2.properties.limits.maxImageDimension1D;
    			    pImageFormatProperties->maxExtent.height = 1;
@@ -330,13 +330,13 @@ BCnLayer_GetPhysicalDeviceImageFormatProperties(VkPhysicalDevice physicalDevice,
    				pImageFormatProperties->maxMipLevels = 1;
    			else
    				pImageFormatProperties->maxMipLevels = log2(pImageFormatProperties->maxExtent.width > pImageFormatProperties->maxExtent.height ? pImageFormatProperties->maxExtent.width :  pImageFormatProperties->maxExtent.height);
-   			
+
    			if (tiling & VK_IMAGE_TILING_LINEAR ||
    			    ((tiling & VK_IMAGE_TILING_OPTIMAL) && type & VK_IMAGE_TYPE_3D))
    				pImageFormatProperties->maxArrayLayers = 1;
    			else
    			    pImageFormatProperties->maxArrayLayers = props2.properties.limits.maxImageArrayLayers;
-   			    
+
    			pImageFormatProperties->sampleCounts = VK_SAMPLE_COUNT_1_BIT;
    			pImageFormatProperties->maxResourceSize = 562949953421312;
         	return VK_SUCCESS;
@@ -357,7 +357,7 @@ BCnLayer_GetPhysicalDeviceImageFormatProperties2(VkPhysicalDevice physicalDevice
 
 	VkPhysicalDeviceProperties2 props2 = propertiesMap[GetKey(physicalDevice)];
 	VkPhysicalDeviceDriverProperties driverProps = driverPropertiesMap[GetKey(physicalDevice)];
-	
+
     switch(pImageFormatInfo->format) {
 		case VK_FORMAT_BC1_RGB_UNORM_BLOCK:
    		case VK_FORMAT_BC1_RGB_SRGB_BLOCK:
@@ -378,11 +378,11 @@ BCnLayer_GetPhysicalDeviceImageFormatProperties2(VkPhysicalDevice physicalDevice
    		case VK_FORMAT_BC7_UNORM_BLOCK:
    		case VK_FORMAT_BC7_SRGB_BLOCK:
    			if (bcn_compute_auto && ((driverProps.driverID == VK_DRIVER_ID_QUALCOMM_PROPRIETARY && props2.properties.driverVersion > VK_MAKE_VERSION(512, 530, 0)) ||
-   			                         driverProps.driverID == VK_DRIVER_ID_MESA_TURNIP)) 
+   			                         driverProps.driverID == VK_DRIVER_ID_MESA_TURNIP))
    			{
    				break;
    			}
-   				
+
    			if (pImageFormatInfo->type & VK_IMAGE_TYPE_1D) {
    				pImageFormatProperties->imageFormatProperties.maxExtent.width = props2.properties.limits.maxImageDimension1D;
    				pImageFormatProperties->imageFormatProperties.maxExtent.height = 1;
@@ -410,13 +410,13 @@ BCnLayer_GetPhysicalDeviceImageFormatProperties2(VkPhysicalDevice physicalDevice
    				pImageFormatProperties->imageFormatProperties.maxMipLevels = 1;
    			else
    			    pImageFormatProperties->imageFormatProperties.maxMipLevels = log2(pImageFormatProperties->imageFormatProperties.maxExtent.width > pImageFormatProperties->imageFormatProperties.maxExtent.height ? pImageFormatProperties->imageFormatProperties.maxExtent.width :  pImageFormatProperties->imageFormatProperties.maxExtent.height);
-   			
+
    			if (pImageFormatInfo->tiling & VK_IMAGE_TILING_LINEAR ||
    			    ((pImageFormatInfo->tiling & VK_IMAGE_TILING_OPTIMAL) && pImageFormatInfo->type & VK_IMAGE_TYPE_3D))
    				pImageFormatProperties->imageFormatProperties.maxArrayLayers = 1;
    			else
    				pImageFormatProperties->imageFormatProperties.maxArrayLayers = props2.properties.limits.maxImageArrayLayers;
-   				
+
    			pImageFormatProperties->imageFormatProperties.sampleCounts = VK_SAMPLE_COUNT_1_BIT;
    			pImageFormatProperties->imageFormatProperties.maxResourceSize = 562949953421312;
       		return VK_SUCCESS;
@@ -435,12 +435,12 @@ BCnLayer_GetPhysicalDeviceFormatProperties(VkPhysicalDevice physicalDevice,
 {
 	scoped_lock l(global_lock);
 
-	instanceDispatch[GetKey(physicalDevice)].GetPhysicalDeviceFormatProperties(physicalDevice, 
+	instanceDispatch[GetKey(physicalDevice)].GetPhysicalDeviceFormatProperties(physicalDevice,
 		format, pFormatProperties);
-	                                  
+
 	VkPhysicalDeviceProperties2 props2 = propertiesMap[GetKey(physicalDevice)];
     VkPhysicalDeviceDriverProperties driverProps = driverPropertiesMap[GetKey(physicalDevice)];
-      
+
     switch (format) {
     	case VK_FORMAT_BC1_RGB_UNORM_BLOCK:
     	case VK_FORMAT_BC1_RGB_SRGB_BLOCK:
@@ -461,11 +461,11 @@ BCnLayer_GetPhysicalDeviceFormatProperties(VkPhysicalDevice physicalDevice,
    		case VK_FORMAT_BC7_UNORM_BLOCK:
    		case VK_FORMAT_BC7_SRGB_BLOCK:
    			if (bcn_compute_auto && ((driverProps.driverID == VK_DRIVER_ID_QUALCOMM_PROPRIETARY && props2.properties.driverVersion > VK_MAKE_VERSION(512, 530, 0)) ||
-   			                         driverProps.driverID == VK_DRIVER_ID_MESA_TURNIP)) 
+   			                         driverProps.driverID == VK_DRIVER_ID_MESA_TURNIP))
    			{
    				break;
    			}
-   			                                        
+
    			pFormatProperties->optimalTilingFeatures |= VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT | VK_FORMAT_FEATURE_BLIT_SRC_BIT | VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT | VK_FORMAT_FEATURE_TRANSFER_DST_BIT;
    			return;
    		default:
@@ -498,7 +498,7 @@ void FinalizerThread(struct device* dev) {
                 queue.pop_back();
                 if (stagingResources) {
                     stagingResources->WaitForCompletion();
-                    stagingResources->Cleanup(); 
+                    stagingResources->Cleanup();
                 }
             }
         }
@@ -536,7 +536,7 @@ VkPhysicalDeviceFaultFeaturesEXT CheckForFaultSupport(VkInstance instance, VkPhy
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
         .pNext = &faultFeatures,
     };
-    
+
     instanceDispatch[GetKey(instance)].GetPhysicalDeviceFeatures2(physicalDevice, &features);
 
     return faultFeatures;
@@ -579,7 +579,7 @@ BCnLayer_CreateDevice(VkPhysicalDevice physicalDevice,
     	if (memoryProps.memoryTypes[idx].propertyFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)
         	break;
     }
-    
+
     auto transcode_to_etc1 = getenv("BCN_TRANSCODE_TO_ETC1") ? atoi(getenv("BCN_TRANSCODE_TO_ETC1")) : 0;
     auto transcode_to_etc2 = getenv("BCN_TRANSCODE_TO_ETC2") ? atoi(getenv("BCN_TRANSCODE_TO_ETC2")) : transcode_to_etc1;
     auto transcode_to_astc = getenv("BCN_TRANSCODE_TO_ASTC") ? atoi(getenv("BCN_TRANSCODE_TO_ASTC")) : 0;
@@ -669,7 +669,7 @@ BCnLayer_CreateDevice(VkPhysicalDevice physicalDevice,
     }
     createInfo.ppEnabledExtensionNames = enabledExtensions.data();
     createInfo.enabledExtensionCount = static_cast<uint32_t>(enabledExtensions.size());
-    
+
     VkPhysicalDeviceFaultFeaturesEXT layerFaultFeatures = {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FAULT_FEATURES_EXT,
         .deviceFault = VK_TRUE,
@@ -686,7 +686,7 @@ BCnLayer_CreateDevice(VkPhysicalDevice physicalDevice,
             createInfo.pNext = &layerFaultFeatures;
         }
     }
-    
+
     VkPhysicalDevice8BitStorageFeaturesKHR layer8BitFeats = {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_8BIT_STORAGE_FEATURES_KHR,
         .storageBuffer8BitAccess = VK_TRUE,
@@ -733,7 +733,7 @@ BCnLayer_CreateDevice(VkPhysicalDevice physicalDevice,
             enabledFeatures.textureCompressionETC2 = featuresMap[GetKey(physicalDevice)].textureCompressionETC2;
         if (transcode_to_astc)
             enabledFeatures.textureCompressionASTC_LDR = featuresMap[GetKey(physicalDevice)].textureCompressionASTC_LDR;
-        
+
         enabledFeatures.shaderInt16 = VK_TRUE;
         createInfo.pEnabledFeatures = &enabledFeatures;
     } else if (appFeatures2) {
@@ -742,7 +742,7 @@ BCnLayer_CreateDevice(VkPhysicalDevice physicalDevice,
             appFeatures2->features.textureCompressionETC2 = featuresMap[GetKey(physicalDevice)].textureCompressionETC2;
         if (transcode_to_astc)
             appFeatures2->features.textureCompressionASTC_LDR = featuresMap[GetKey(physicalDevice)].textureCompressionASTC_LDR;
-        
+
         appFeatures2->features.shaderInt16 = VK_TRUE;
     }
 
@@ -792,7 +792,9 @@ BCnLayer_CreateDevice(VkPhysicalDevice physicalDevice,
     table.UpdateDescriptorSets = (PFN_vkUpdateDescriptorSets)gdpa(*pDevice, "vkUpdateDescriptorSets");
     table.CmdBindPipeline = (PFN_vkCmdBindPipeline)gdpa(*pDevice, "vkCmdBindPipeline");
     table.CmdPushConstants = (PFN_vkCmdPushConstants)gdpa(*pDevice, "vkCmdPushConstants");
+    table.CmdPushConstants2 = (PFN_vkCmdPushConstants2)gdpa(*pDevice, "vkCmdPushConstants2");
     table.CmdBindDescriptorSets = (PFN_vkCmdBindDescriptorSets)gdpa(*pDevice, "vkCmdBindDescriptorSets");
+    table.CmdBindDescriptorSets2 = (PFN_vkCmdBindDescriptorSets2)gdpa(*pDevice, "vkCmdBindDescriptorSets2");
     table.CmdDispatch = (PFN_vkCmdDispatch)gdpa(*pDevice, "vkCmdDispatch");
     table.CmdCopyBufferToImage = (PFN_vkCmdCopyBufferToImage)gdpa(*pDevice, "vkCmdCopyBufferToImage");
     table.CmdCopyBufferToImage2 = (PFN_vkCmdCopyBufferToImage2)gdpa(*pDevice, "vkCmdCopyBufferToImage2");
@@ -822,7 +824,7 @@ BCnLayer_CreateDevice(VkPhysicalDevice physicalDevice,
     if (table.DeviceSetApiDumpState) {
         Logger::log("info", "[DEBUG] vkDeviceSetApiDumpState (VK_LAYER_LUNARG_api_dump) is enabled");
     }
-    
+
     uint32_t queueCount;
     VkQueue queue;
 
@@ -857,7 +859,7 @@ BCnLayer_CreateDevice(VkPhysicalDevice physicalDevice,
     device->transcode_to_astc = transcode_to_astc;
     device->profile_transfers = profile_transfers;
     device->add_watermark = add_watermark;
-    
+
     if (!transcode_to_etc2 && !transcode_to_astc && !add_watermark) { // transcoding is mutually exclusive with use_image_view
         device->use_image_view = getenv("BCN_COMPUTE_IMAGE_VIEW") ? atoi(getenv("BCN_COMPUTE_IMAGE_VIEW")) : 1;
     }
@@ -868,7 +870,7 @@ BCnLayer_CreateDevice(VkPhysicalDevice physicalDevice,
         device->dump_buffers_path = "";
     }
 
-   
+
     result = create_bcn_compute_pipelines(device.get());
     if (result != VK_SUCCESS) {
     	Logger::log("error", "Failed to create BCn compute pipeline, res %d", result);
@@ -882,7 +884,7 @@ BCnLayer_CreateDevice(VkPhysicalDevice physicalDevice,
     const DescriptorSetAllocator::PoolSizes default_pool_sizes {
         .sizes = {
             {
-                .type = (device->use_image_view) ? VK_DESCRIPTOR_TYPE_STORAGE_IMAGE 
+                .type = (device->use_image_view) ? VK_DESCRIPTOR_TYPE_STORAGE_IMAGE
                                                  : VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
                 .descriptorCount = 256u
             },
@@ -908,7 +910,7 @@ BCnLayer_CreateDevice(VkPhysicalDevice physicalDevice,
 }
 
 VK_LAYER_EXPORT void VKAPI_CALL
-BCnLayer_DestroyDevice(VkDevice device, 
+BCnLayer_DestroyDevice(VkDevice device,
 					   const VkAllocationCallbacks *pAllocator)
 {
 	struct device *dev;
@@ -942,12 +944,12 @@ BCnLayer_DestroyDevice(VkDevice device,
 	dev->descriptorSetAllocator.reset();
 	if (device != VK_NULL_HANDLE)
 		dev->table.DestroyDevice(device, pAllocator);
-				
+
 	deviceMap.erase(GetKey(device));
 }
 
 VK_LAYER_EXPORT PFN_vkVoidFunction VKAPI_CALL
-BCnLayer_GetDeviceProcAddr(VkDevice device, 
+BCnLayer_GetDeviceProcAddr(VkDevice device,
 						   const char *pName)
 {
 	GETPROCADDR(CreateImage);
@@ -960,6 +962,13 @@ BCnLayer_GetDeviceProcAddr(VkDevice device,
 	GETPROCADDR(DestroyBuffer);
 	GETPROCADDR(AllocateCommandBuffers);
 	GETPROCADDR(FreeCommandBuffers);
+	GETPROCADDR(BeginCommandBuffer);
+	GETPROCADDR(ResetCommandBuffer);
+	GETPROCADDR(CmdBindPipeline);
+	GETPROCADDR(CmdBindDescriptorSets);
+	GETPROCADDR(CmdBindDescriptorSets2);
+	GETPROCADDR(CmdPushConstants);
+	GETPROCADDR(CmdPushConstants2);
 	GETPROCADDR(CmdCopyBufferToImage);
 	GETPROCADDR(CmdCopyBufferToImage2);
 	GETPROCADDR(CmdCopyImage2);
@@ -982,9 +991,9 @@ BCnLayer_GetDeviceProcAddr(VkDevice device,
 }
 
 VK_LAYER_EXPORT PFN_vkVoidFunction VKAPI_CALL
-BCnLayer_GetInstanceProcAddr(VkInstance instance, 
+BCnLayer_GetInstanceProcAddr(VkInstance instance,
 							 const char *pName)
-{   
+{
 	GETPROCADDR(CreateInstance);
 	GETPROCADDR(EnumeratePhysicalDevices)
 	GETPROCADDR(GetPhysicalDeviceFeatures);

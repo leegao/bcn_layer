@@ -27,7 +27,7 @@ BCnLayer_CreateBuffer(VkDevice device,
                       const VkBufferCreateInfo *pCreateInfo,
                       const VkAllocationCallbacks *pAllocator,
                       VkBuffer *pBuffer);
-                      
+
 VkResult VKAPI_CALL
 BCnLayer_BindBufferMemory(VkDevice device,
                           VkBuffer buffer,
@@ -55,6 +55,45 @@ BCnLayer_FreeCommandBuffers(VkDevice device,
                             uint32_t commandBufferCount,
                             const VkCommandBuffer *pCommandBuffers);
 
+VkResult VKAPI_CALL
+BCnLayer_BeginCommandBuffer(VkCommandBuffer commandBuffer,
+                            const VkCommandBufferBeginInfo *pBeginInfo);
+
+VkResult VKAPI_CALL
+BCnLayer_ResetCommandBuffer(VkCommandBuffer commandBuffer,
+                            VkCommandBufferResetFlags flags);
+
+void VKAPI_CALL
+BCnLayer_CmdBindPipeline(VkCommandBuffer commandBuffer,
+                         VkPipelineBindPoint pipelineBindPoint,
+                         VkPipeline pipeline);
+
+void VKAPI_CALL
+BCnLayer_CmdBindDescriptorSets(VkCommandBuffer commandBuffer,
+                               VkPipelineBindPoint pipelineBindPoint,
+                               VkPipelineLayout layout,
+                               uint32_t firstSet,
+                               uint32_t descriptorSetCount,
+                               const VkDescriptorSet *pDescriptorSets,
+                               uint32_t dynamicOffsetCount,
+                               const uint32_t *pDynamicOffsets);
+
+void VKAPI_CALL
+BCnLayer_CmdBindDescriptorSets2(VkCommandBuffer commandBuffer,
+                                const VkBindDescriptorSetsInfo *pBindDescriptorSetsInfo);
+
+void VKAPI_CALL
+BCnLayer_CmdPushConstants(VkCommandBuffer commandBuffer,
+                          VkPipelineLayout layout,
+                          VkShaderStageFlags stageFlags,
+                          uint32_t offset,
+                          uint32_t size,
+                          const void *pValues);
+
+void VKAPI_CALL
+BCnLayer_CmdPushConstants2(VkCommandBuffer commandBuffer,
+                           const VkPushConstantsInfo *pPushConstantsInfo);
+
 void VKAPI_CALL
 BCnLayer_CmdCopyBufferToImage(VkCommandBuffer commandBuffer,
                               VkBuffer srcBuffer,
@@ -65,7 +104,7 @@ BCnLayer_CmdCopyBufferToImage(VkCommandBuffer commandBuffer,
 
 
 void VKAPI_CALL
-BCnLayer_CmdCopyBufferToImage2(VkCommandBuffer commandBuffer, 
+BCnLayer_CmdCopyBufferToImage2(VkCommandBuffer commandBuffer,
                                const VkCopyBufferToImageInfo2* pCopyBufferToImageInfo);
 
 void VKAPI_CALL
@@ -105,7 +144,7 @@ BCnLayer_CreateFence(VkDevice device,
                      const VkFenceCreateInfo *pCreateInfo,
                      const VkAllocationCallbacks *pAllocator,
                      VkFence *pFence);
-                     
+
 VkResult VKAPI_CALL
 BCnLayer_WaitForFences(VkDevice device,
                        uint32_t fenceCount,
@@ -116,7 +155,7 @@ BCnLayer_WaitForFences(VkDevice device,
 void VKAPI_CALL
 BCnLayer_DestroyFence(VkDevice device,
                       VkFence fence,
-                      const VkAllocationCallbacks *pAllocator);              
+                      const VkAllocationCallbacks *pAllocator);
 }
 
 

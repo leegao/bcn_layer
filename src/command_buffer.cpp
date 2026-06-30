@@ -3,6 +3,7 @@
 #include "image.hpp"
 #include "bcn.hpp"
 #include "logger.hpp"
+#include "pipeline_state.hpp"
 
 std::unordered_map<VkCommandBuffer, std::shared_ptr<struct command_buffer>> commandBuffersMap;
 
@@ -30,7 +31,7 @@ BCnLayer_AllocateCommandBuffers(VkDevice device,
 		return VK_ERROR_INITIALIZATION_FAILED;
 
 	table = dev->table;
-	
+
 	result = table.AllocateCommandBuffers(device, pAllocateInfo, pCommandBuffers);
 	if (result != VK_SUCCESS) {
 		Logger::log("error", "Failed to allocate command buffers, res %d", result);
@@ -43,12 +44,13 @@ BCnLayer_AllocateCommandBuffers(VkDevice device,
 		cmd->device = dev;
 		cmd->pool = pAllocateInfo->commandPool;
 		cmd->currentStagingResources = std::make_unique<StagingResources>(device);
+		cmd->reset_compute_state();
 		{
 			scoped_lock l(global_lock);
 			commandBuffersMap[pCommandBuffers[i]] = cmd;
 		}
 	}
-	
+
 	return VK_SUCCESS;
 }
 
@@ -63,15 +65,122 @@ BCnLayer_FreeCommandBuffers(VkDevice device,
 	struct device *dev = get_device(device);
 	if (!dev)
 		return;
-	
+
 	for (uint32_t i = 0; i < commandBufferCount; i++) {
 		struct command_buffer *cb = get_command_buffer(pCommandBuffers[i]);
 		if (!cb)
 			continue;
-			
+
 	    dev->table.FreeCommandBuffers(dev->handle, commandPool, 1, &cb->handle);
 		commandBuffersMap.erase(pCommandBuffers[i]);
 	}
+}
+
+VK_LAYER_EXPORT VkResult VKAPI_CALL
+BCnLayer_BeginCommandBuffer(VkCommandBuffer commandBuffer,
+							 const VkCommandBufferBeginInfo *pBeginInfo) {
+    struct command_buffer *cb = get_command_buffer(commandBuffer);
+    struct device *dev = cb->device;
+
+    cb->reset_compute_state(); // begin/reset should clear inherited compute pipeline states
+
+    return dev->table.BeginCommandBuffer(commandBuffer, pBeginInfo);
+}
+
+VK_LAYER_EXPORT VkResult VKAPI_CALL
+BCnLayer_ResetCommandBuffer(VkCommandBuffer commandBuffer,
+    VkCommandBufferResetFlags flags) {
+    struct command_buffer *cb = get_command_buffer(commandBuffer);
+    struct device *dev = cb->device;
+
+    cb->reset_compute_state(); // begin/reset should clear inherited compute pipeline states
+
+    return dev->table.ResetCommandBuffer(commandBuffer, flags);
+}
+
+VK_LAYER_EXPORT void VKAPI_CALL
+BCnLayer_CmdBindPipeline(VkCommandBuffer commandBuffer,
+    VkPipelineBindPoint pipelineBindPoint,
+    VkPipeline pipeline) {
+    struct command_buffer *cb = get_command_buffer(commandBuffer);
+    struct device *dev = cb->device;
+
+    if (pipelineBindPoint == VK_PIPELINE_BIND_POINT_COMPUTE) {
+       	cb->computePipelineState.pipelineBound = true;
+       	cb->computePipelineState.pipeline = pipeline;
+    }
+
+    dev->table.CmdBindPipeline(commandBuffer, pipelineBindPoint, pipeline);
+}
+
+VK_LAYER_EXPORT void VKAPI_CALL
+BCnLayer_CmdBindDescriptorSets(VkCommandBuffer commandBuffer,
+    VkPipelineBindPoint pipelineBindPoint,
+    VkPipelineLayout layout,
+    uint32_t firstSet,
+    uint32_t descriptorSetCount,
+    const VkDescriptorSet *pDescriptorSets,
+    uint32_t dynamicOffsetCount,
+    const uint32_t *pDynamicOffsets) {
+    struct command_buffer *cb = get_command_buffer(commandBuffer);
+    struct device *dev = cb->device;
+
+    if (pipelineBindPoint == VK_PIPELINE_BIND_POINT_COMPUTE) {
+        track_descriptor_set_binds(cb->computePipelineState, layout, firstSet,
+            descriptorSetCount, pDescriptorSets, dynamicOffsetCount, pDynamicOffsets);
+    }
+
+    dev->table.CmdBindDescriptorSets(commandBuffer, pipelineBindPoint, layout, firstSet,
+        descriptorSetCount, pDescriptorSets, dynamicOffsetCount, pDynamicOffsets);
+}
+
+VK_LAYER_EXPORT void VKAPI_CALL
+BCnLayer_CmdBindDescriptorSets2(VkCommandBuffer commandBuffer,
+    const VkBindDescriptorSetsInfo *pBindDescriptorSetsInfo) {
+    struct command_buffer *cb = get_command_buffer(commandBuffer);
+    struct device *dev = cb->device;
+
+    if (pBindDescriptorSetsInfo->stageFlags & VK_SHADER_STAGE_COMPUTE_BIT) {
+        track_descriptor_set_binds(cb->computePipelineState,
+            pBindDescriptorSetsInfo->layout,
+            pBindDescriptorSetsInfo->firstSet,
+            pBindDescriptorSetsInfo->descriptorSetCount,
+            pBindDescriptorSetsInfo->pDescriptorSets,
+            pBindDescriptorSetsInfo->dynamicOffsetCount,
+            pBindDescriptorSetsInfo->pDynamicOffsets);
+    }
+
+    dev->table.CmdBindDescriptorSets2(commandBuffer, pBindDescriptorSetsInfo);
+}
+
+VK_LAYER_EXPORT void VKAPI_CALL
+BCnLayer_CmdPushConstants(VkCommandBuffer commandBuffer,
+						   VkPipelineLayout layout,
+						   VkShaderStageFlags stageFlags,
+						   uint32_t offset,
+						   uint32_t size,
+						   const void *pValues) {
+    struct command_buffer *cb = get_command_buffer(commandBuffer);
+    struct device *dev = cb->device;
+
+    track_push_constants(cb->computePipelineState, layout, stageFlags, offset, size, pValues);
+
+    dev->table.CmdPushConstants(commandBuffer, layout, stageFlags, offset, size, pValues);
+}
+
+VK_LAYER_EXPORT void VKAPI_CALL
+BCnLayer_CmdPushConstants2(VkCommandBuffer commandBuffer,
+							const VkPushConstantsInfo *pPushConstantsInfo) {
+    struct command_buffer *cb = get_command_buffer(commandBuffer);
+    struct device *dev = cb->device;
+
+    track_push_constants(cb->computePipelineState,
+        pPushConstantsInfo->layout,
+        pPushConstantsInfo->stageFlags,
+        pPushConstantsInfo->offset,
+        pPushConstantsInfo->size,
+        pPushConstantsInfo->pValues);
+    dev->table.CmdPushConstants2(commandBuffer, pPushConstantsInfo);
 }
 
 size_t BcnBufferSize(VkFormat format, VkBufferImageCopy& copy_region) {
@@ -113,7 +222,7 @@ void TranscodeAndCopyBufferToImage(
         : dstImg->transcode_to_astc ? get_format_for_bcn_to_astc(dev, format) : get_format_for_bcn(format);
 
     VkBufferImageCopy copy_region = region;
-    int w = copy_region.imageExtent.width;                                                                     
+    int w = copy_region.imageExtent.width;
     int h = copy_region.imageExtent.height;
     int d = copy_region.imageExtent.depth;
 
@@ -140,7 +249,7 @@ void TranscodeAndCopyBufferToImage(
         auto staging_buf = create_staging_buffer(dev, size, target_format, w, h);
 
         decompress_bcn_compute(dev, cb->handle, format, &copy_region, srcBuffer, staging_buf.get(), dstImg, dstImageLayout, add_watermark);
-        
+
         VkBufferMemoryBarrier bufferBarrier = {
             .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
             .pNext = nullptr,
@@ -152,11 +261,11 @@ void TranscodeAndCopyBufferToImage(
             .offset = 0,
             .size = VK_WHOLE_SIZE
         };
-    
+
         table.CmdPipelineBarrier(cb->handle,
-            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 
+            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
             0, 0, nullptr, 1, &bufferBarrier, 0, nullptr);
-    
+
         copy_region.bufferOffset = 0;
         copy_region.bufferRowLength = 0;
         copy_region.bufferImageHeight = 0;
@@ -174,7 +283,7 @@ BCnLayer_CmdCopyBufferToImage(VkCommandBuffer commandBuffer,
 						      VkImageLayout dstImageLayout,
 						      uint32_t regionCount,
 						      const VkBufferImageCopy *pRegions)
-{    
+{
     struct command_buffer *cb = get_command_buffer(commandBuffer);
     struct device *dev = cb->device;
     struct image *img = find_image(dstImage);
@@ -184,7 +293,8 @@ BCnLayer_CmdCopyBufferToImage(VkCommandBuffer commandBuffer,
             srcBuffer, dstImage, dstImageLayout, regionCount, pRegions);
         return;
     }
-    
+
+    ScopedPipelineStateSnapshot snapshot(cb); // since transcoding injects a compute pipeline
     for (uint32_t i = 0; i < regionCount; i++) {
         TranscodeAndCopyBufferToImage(dev, cb, buf, img,
             dstImageLayout, pRegions[i], dev->use_image_view, dev->add_watermark);
@@ -192,7 +302,7 @@ BCnLayer_CmdCopyBufferToImage(VkCommandBuffer commandBuffer,
 }
 
 VK_LAYER_EXPORT void VKAPI_CALL
-BCnLayer_CmdCopyBufferToImage2(VkCommandBuffer commandBuffer, 
+BCnLayer_CmdCopyBufferToImage2(VkCommandBuffer commandBuffer,
                                const VkCopyBufferToImageInfo2* pCopyBufferToImageInfo)
 {
     struct command_buffer *cb = get_command_buffer(commandBuffer);
@@ -211,6 +321,7 @@ BCnLayer_CmdCopyBufferToImage2(VkCommandBuffer commandBuffer,
     }
 
     // Emulate this using BCnLayer_CmdCopyBufferToImage since there are no valid pNexts
+    ScopedPipelineStateSnapshot snapshot(cb); // since transcoding injects a compute pipeline
     for (uint32_t i = 0; i < regionCount; i++) {
         VkBufferImageCopy region {
             .bufferOffset = pRegions[i].bufferOffset,
@@ -228,8 +339,8 @@ BCnLayer_CmdCopyBufferToImage2(VkCommandBuffer commandBuffer,
 // TODO(leegao): auto-generate these
 template <typename T>
 std::string copy_image_info2_to_string(const int regionCount, const T* regions) {
-    static_assert(std::is_same<T, VkImageCopy>::value || 
-                  std::is_same<T, VkImageCopy2>::value, 
+    static_assert(std::is_same<T, VkImageCopy>::value ||
+                  std::is_same<T, VkImageCopy2>::value,
                   "Unsupported type passed to copy_image_info2_to_string");
     if (!regions) {
         return "nullptr";
@@ -260,8 +371,8 @@ void TranscodeAndCopyBcnImageToImage(struct device* dev,
                                      VkImageLayout srcImageLayout,
                                      VkImageLayout dstImageLayout,
                                      const T& image_region) {
-    static_assert(std::is_same<T, VkImageCopy>::value || 
-                  std::is_same<T, VkImageCopy2>::value, 
+    static_assert(std::is_same<T, VkImageCopy>::value ||
+                  std::is_same<T, VkImageCopy2>::value,
                   "Unsupported type passed to TranscodeAndCopyImageToImage");
     const VkLayerDispatchTable& table = dev->table;
     VkBufferImageCopy fake_pixel_region = {
@@ -274,7 +385,7 @@ void TranscodeAndCopyBcnImageToImage(struct device* dev,
     };
 
     VkDeviceSize raw_bcn_buffer_size = BcnBufferSize(dstImg->format, fake_pixel_region);
-    auto staging_block_buf = create_staging_buffer(dev, raw_bcn_buffer_size, srcImg->format, 
+    auto staging_block_buf = create_staging_buffer(dev, raw_bcn_buffer_size, srcImg->format,
                                                     image_region.extent.width, image_region.extent.height);
     VkBufferImageCopy copy_image_to_buffer_region = {
         .imageSubresource = image_region.srcSubresource,
@@ -282,7 +393,7 @@ void TranscodeAndCopyBcnImageToImage(struct device* dev,
         .imageExtent = image_region.extent
     };
 
-    table.CmdCopyImageToBuffer(cb->handle, srcImg->handle, srcImageLayout, 
+    table.CmdCopyImageToBuffer(cb->handle, srcImg->handle, srcImageLayout,
                                 staging_block_buf->handle, 1, &copy_image_to_buffer_region);
 
     VkBufferMemoryBarrier buffer_memory_barrier = {
@@ -297,7 +408,7 @@ void TranscodeAndCopyBcnImageToImage(struct device* dev,
     };
 
     table.CmdPipelineBarrier(cb->handle,
-                             VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 
+                             VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                              0, 0, nullptr, 1, &buffer_memory_barrier, 0, nullptr);
 
     VkBufferImageCopy transcode_region = {
@@ -314,7 +425,7 @@ void TranscodeAndCopyBcnImageToImage(struct device* dev,
         }
     };
 
-    TranscodeAndCopyBufferToImage(dev, cb, staging_block_buf.get(), 
+    TranscodeAndCopyBufferToImage(dev, cb, staging_block_buf.get(),
                                   dstImg, dstImageLayout, transcode_region, false, dev->add_watermark);
 
     cb->currentStagingResources->AddStagingBuffer(std::move(staging_block_buf));
@@ -355,6 +466,7 @@ BCnLayer_CmdCopyImage2(
         return;
     }
 
+    ScopedPipelineStateSnapshot snapshot(cb); // since transcoding injects a compute pipeline
     for (uint32_t i = 0; i < pCopyImageInfo->regionCount; i++) {
         const auto& image_region = pCopyImageInfo->pRegions[i];
         TranscodeAndCopyBcnImageToImage(dev, cb, srcImg, dstImg, pCopyImageInfo->srcImageLayout,
@@ -402,6 +514,7 @@ BCnLayer_CmdCopyImage(
         return;
     }
 
+    ScopedPipelineStateSnapshot snapshot(cb); // since transcoding injects a compute pipeline
     for (uint32_t i = 0; i < regionCount; i++) {
         const auto& image_region = pRegions[i];
         TranscodeAndCopyBcnImageToImage(dev, cb, srcImg, dstImg, srcImageLayout, dstImageLayout, image_region);

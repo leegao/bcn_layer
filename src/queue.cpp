@@ -108,7 +108,7 @@ BCnLayer_GetDeviceQueue(VkDevice device,
 						VkQueue *pQueue)
 {
 	scoped_lock l(global_lock);
-	
+
 	struct device *dev = get_device(device);
 	dev->table.GetDeviceQueue(device, queueFamilyIndex, queueIndex, pQueue);
 
@@ -135,7 +135,7 @@ BCnLayer_QueueSubmit(VkQueue queue,
 	{
 	    scoped_lock l(global_lock);
     	q = get_queue(queue);
-    
+
     	for (int i = 0; i < submitInfoCount; i++) {
     		updaters[i] = VkSubmitInfoUpdater(&pSubmitInfos[i]);
     		for (int j = 0; j < pSubmitInfos[i].commandBufferCount; j++) {
@@ -143,7 +143,10 @@ BCnLayer_QueueSubmit(VkQueue queue,
     			auto stagingResources = std::move(cb->currentStagingResources);
     			// In case this command buffer is reused, reset the staging resources.
     			cb->currentStagingResources = std::make_unique<StagingResources>(q->device->handle);
-    			
+
+                // Technically shouldn't be needed, but just in case some game engine forgets to reset the command buffer
+                cb->reset_compute_state();
+
     			std::pair<VkSemaphore, VkFence> staging_fence = stagingResources->MakeFence();
     			if (staging_fence.first != VK_NULL_HANDLE) {
                     // Signal the temp semaphore
@@ -166,7 +169,7 @@ BCnLayer_QueueSubmit(VkQueue queue,
 	    Logger::log("error", "QueueSubmit failed: %d", result);
 	    return result;
 	}
-	
+
 	// Submit an empty command buffer to queue the tmp sem and signal the resource completed fence
 	for (const auto& staging_fence : staging_fences) {
 		VkSubmitInfoUpdater submit_info;
@@ -193,10 +196,10 @@ BCnLayer_QueueSubmit2(VkQueue queue,
     std::vector<std::pair<VkSemaphore, VkFence>> staging_fences;
     {
     	scoped_lock l(global_lock);
-    
+
     	q = get_queue(queue);
     	struct fence *f = get_fence(fence);
-    
+
     	for (int i = 0; i < submitInfoCount; i++) {
             updaters[i] = VkSubmitInfo2Updater(&pSubmitInfos[i]);
     		for (int j = 0; j < pSubmitInfos[i].commandBufferInfoCount; j++) {
@@ -204,7 +207,10 @@ BCnLayer_QueueSubmit2(VkQueue queue,
     			auto stagingResources = std::move(cb->currentStagingResources);
     			// In case this command buffer is reused, reset the staging resources.
     			cb->currentStagingResources = std::make_unique<StagingResources>(q->device->handle);
-    			
+
+                // Technically shouldn't be needed, but just in case some game engine forgets to reset the command buffer
+                cb->reset_compute_state();
+
     			std::pair<VkSemaphore, VkFence> staging_fence = stagingResources->MakeFence();
     			if (staging_fence.first != VK_NULL_HANDLE) {
                     // Signal the temp semaphore
@@ -227,7 +233,7 @@ BCnLayer_QueueSubmit2(VkQueue queue,
 	    Logger::log("error", "QueueSubmit2 failed: %d", result);
 	    return result;
 	}
-	
+
 	// Submit an empty command buffer to queue the tmp sem and signal the resource completed fence
 	for (const auto& staging_fence : staging_fences) {
 		VkSubmitInfoUpdater submit_info;
