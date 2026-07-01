@@ -4,6 +4,7 @@
 #include "bcn.hpp"
 #include "logger.hpp"
 #include "pipeline_state.hpp"
+#include "staging_resources.hpp"
 
 std::unordered_map<VkCommandBuffer, std::shared_ptr<struct command_buffer>> commandBuffersMap;
 
@@ -296,6 +297,10 @@ BCnLayer_CmdCopyBufferToImage(VkCommandBuffer commandBuffer,
 
     ScopedPipelineStateSnapshot snapshot(cb); // since transcoding injects a compute pipeline
     for (uint32_t i = 0; i < regionCount; i++) {
+        auto scopedTimestampQuery = cb->currentStagingResources->MakeScopedTimestampQuery(
+            cb, "all", img->format,
+            pRegions[i].imageExtent.width * pRegions[i].imageExtent.height * pRegions[i].imageExtent.depth,
+            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
         TranscodeAndCopyBufferToImage(dev, cb, buf, img,
             dstImageLayout, pRegions[i], dev->use_image_view, dev->add_watermark);
     }
@@ -331,6 +336,10 @@ BCnLayer_CmdCopyBufferToImage2(VkCommandBuffer commandBuffer,
             .imageOffset = pRegions[i].imageOffset,
             .imageExtent = pRegions[i].imageExtent,
         };
+        auto scopedTimestampQuery = cb->currentStagingResources->MakeScopedTimestampQuery(
+            cb, "all", img->format,
+            region.imageExtent.width * region.imageExtent.height * region.imageExtent.depth,
+            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
         TranscodeAndCopyBufferToImage(dev, cb, buf, img, dstImageLayout,
             region, dev->use_image_view, dev->add_watermark);
     }
@@ -469,6 +478,10 @@ BCnLayer_CmdCopyImage2(
     ScopedPipelineStateSnapshot snapshot(cb); // since transcoding injects a compute pipeline
     for (uint32_t i = 0; i < pCopyImageInfo->regionCount; i++) {
         const auto& image_region = pCopyImageInfo->pRegions[i];
+        auto scopedTimestampQuery = cb->currentStagingResources->MakeScopedTimestampQuery(
+            cb, "copy_image", dstImg->format,
+            image_region.extent.width * image_region.extent.height * image_region.extent.depth,
+            VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
         TranscodeAndCopyBcnImageToImage(dev, cb, srcImg, dstImg, pCopyImageInfo->srcImageLayout,
             pCopyImageInfo->dstImageLayout, image_region);
     }
@@ -517,6 +530,10 @@ BCnLayer_CmdCopyImage(
     ScopedPipelineStateSnapshot snapshot(cb); // since transcoding injects a compute pipeline
     for (uint32_t i = 0; i < regionCount; i++) {
         const auto& image_region = pRegions[i];
+        auto scopedTimestampQuery = cb->currentStagingResources->MakeScopedTimestampQuery(
+            cb, "copy_image", dstImg->format,
+            image_region.extent.width * image_region.extent.height * image_region.extent.depth,
+            VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
         TranscodeAndCopyBcnImageToImage(dev, cb, srcImg, dstImg, srcImageLayout, dstImageLayout, image_region);
     }
 }

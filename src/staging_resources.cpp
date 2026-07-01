@@ -185,12 +185,8 @@ void StagingResources::Cleanup() {
     if (dev->profile_transfers) {
         auto now = std::chrono::system_clock::now();
         auto timestamp = std::chrono::time_point_cast<std::chrono::milliseconds>(now).time_since_epoch().count();
-        auto uncompressed_size = MemoryUsage(VK_FORMAT_R8G8B8A8_UNORM) + MemoryUsage(VK_FORMAT_R16G16B16A16_SFLOAT);
-        auto total_size = MemoryUsage();
-        double memory_usage_mb = ((double)(total_size - uncompressed_size)) / 1024 / 1024;
-        Logger::log("info", "Cleaning up batch %d with %d buffers (%d MB raw, %d MB recompressed), draw took %d ms, throughput = %0.2f MB/s",
-            id, Size(), uncompressed_size / 1024 / 1024, (total_size - uncompressed_size) / 1024 / 1024, timestamp - this->timestamp,
-            memory_usage_mb / (timestamp - this->timestamp) * 1000);
+        Logger::log("info", "Cleaning up batch %d with %d buffers, draw took %d ms",
+            id, Size(), timestamp - this->timestamp);
     }
 
     if (dev->profile_transfers && !queryPools.empty() && !trackedQueries.empty()) {
@@ -238,9 +234,9 @@ void StagingResources::Cleanup() {
                     stat.totalSizeBytes += q.textureSize;
                     stat.count++;
 
-                    formatHist[q.label][q.format].totalTimeMs += durationMs;
-                    formatHist[q.label][q.format].totalSizeBytes += q.textureSize;
-                    formatHist[q.label][q.format].count++;
+                    // formatHist[q.label][q.format].totalTimeMs += durationMs;
+                    // formatHist[q.label][q.format].totalSizeBytes += q.textureSize;
+                    // formatHist[q.label][q.format].count++;
                 }
             }
             for (const auto& [label, stat] : statsRollup) {
@@ -257,16 +253,16 @@ void StagingResources::Cleanup() {
                     totalSizeMb,
                     throughput(totalSizeMb, stat.totalTimeMs),
                     timestampPeriod);
-                for (const auto [key, substat] : formatHist[label]) {
-                    double subTotalSizeMb = static_cast<double>(substat.totalSizeBytes) / (1024.0 * 1024.0);
-                    Logger::log("info", "     + [%s (%d)], Calls: %-4u | Time: %8.3f ms | Data: %7.1f MB | Throughput: %7.1f MB/s",
-                        vk_format_to_string(key).c_str(),
-                        key,
-                        substat.count,
-                        substat.totalTimeMs,
-                        subTotalSizeMb,
-                        throughput(subTotalSizeMb, substat.totalTimeMs));
-                }
+                // for (const auto [key, substat] : formatHist[label]) {
+                //     double subTotalSizeMb = static_cast<double>(substat.totalSizeBytes) / (1024.0 * 1024.0);
+                //     Logger::log("info", "     + [%s (%d)], Calls: %-4u | Time: %8.3f ms | Data: %7.1f MB | Throughput: %7.1f MB/s",
+                //         vk_format_to_string(key).c_str(),
+                //         key,
+                //         substat.count,
+                //         substat.totalTimeMs,
+                //         subTotalSizeMb,
+                //         throughput(subTotalSizeMb, substat.totalTimeMs));
+                // }
             }
 
         }
