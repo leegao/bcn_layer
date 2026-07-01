@@ -3,6 +3,7 @@
 #include "bcn.hpp"
 #include "bcn_layer.hpp"
 #include "buffer.hpp"
+#include "command_buffer.hpp"
 #include "logger.hpp"
 #include <cstdint>
 #include <fstream>
@@ -48,7 +49,7 @@ void LogDeviceFault(struct device *dev, const char* call) {
     if (result == VK_SUCCESS) {
         Logger::log("error", "--- VULKAN DEVICE FAULT DETECTED ---");
         Logger::log("error", "Description: %s", fault_info.description);
-        
+
         for (uint32_t i = 0; i < fault_counts.addressInfoCount; i++) {
             Logger::log("error", ".pAddressInfos[%d]", i);
             Logger::log("error", "  addressType: %d", fault_info.pAddressInfos[i].addressType);
@@ -79,6 +80,19 @@ void LogDeviceFault(struct device *dev, const char* call) {
     }
 }
 
+void ScopedTimestampQuery::Start() {
+   	if (m_startQueryId != UINT32_MAX) {
+        m_cb->device->table.CmdWriteTimestamp(m_cb->handle, m_startStage, m_queryPool, m_startQueryId);
+    }
+}
+
+void ScopedTimestampQuery::End() {
+    if (m_startQueryId != UINT32_MAX) {
+        m_cb->device->table.CmdWriteTimestamp(m_cb->handle, m_endStage, m_queryPool, m_startQueryId + 1);
+    }
+    m_startQueryId = UINT32_MAX;
+}
+
 std::pair<VkSemaphore, VkFence> StagingResources::MakeFence() {
     auto *dev = get_device(device);
     if (!dev || completed != VK_NULL_HANDLE)
@@ -107,14 +121,17 @@ void StagingResources::WaitForCompletion() {
     has_completed = true;
 }
 
-std::pair<uint32_t, uint32_t> StagingResources::AllocateQueryPair(
-    VkCommandBuffer cmdBuf,
+ScopedTimestampQuery StagingResources::MakeScopedTimestampQuery(
+    struct command_buffer* cb,
     const std::string& label,
     VkFormat format,
     uint64_t texture_size,
-    VkQueryPool& outPool) {
+    VkPipelineStageFlagBits startStage,
+    VkPipelineStageFlagBits endStage) {
     auto *dev = get_device(device);
-    if (!dev) return { UINT32_MAX, UINT32_MAX };
+    if (!dev || !dev->profile_transfers)
+        return ScopedTimestampQuery { cb, label, format, texture_size, VK_NULL_HANDLE, UINT32_MAX, startStage, endStage };
+
     if (queryPools.empty() || queryPools.back().allocatedQueries + 2 > kPoolBlockSize) {
         // Allocate a new pool
         VkQueryPoolCreateInfo poolInfo = {
@@ -129,9 +146,9 @@ std::pair<uint32_t, uint32_t> StagingResources::AllocateQueryPair(
         VkResult res = dev->table.CreateQueryPool(device, &poolInfo, nullptr, &newPool);
         if (res != VK_SUCCESS) {
             Logger::log("error", "Failed to allocate query pool block: %d", res);
-            return { UINT32_MAX, UINT32_MAX };
+            return ScopedTimestampQuery { cb, label, format, texture_size, VK_NULL_HANDLE, UINT32_MAX, startStage, endStage };
         }
-        dev->table.CmdResetQueryPool(cmdBuf, newPool, 0, kPoolBlockSize);
+        dev->table.CmdResetQueryPool(cb->handle, newPool, 0, kPoolBlockSize);
         queryPools.push_back({ newPool, 0 });
     }
 
@@ -139,18 +156,18 @@ std::pair<uint32_t, uint32_t> StagingResources::AllocateQueryPair(
     uint32_t startId = activeBlock.allocatedQueries;
     activeBlock.allocatedQueries += 2;
 
-    outPool = activeBlock.handle;
+    auto pool = activeBlock.handle;
     size_t activePoolIdx = queryPools.size() - 1;
 
     trackedQueries.push_back({ label, format, texture_size, activePoolIdx, startId, startId + 1 });
-    return { startId, startId + 1 };
+    return ScopedTimestampQuery { cb, label, format, texture_size, pool, startId, startStage, endStage };
 }
 
 void StagingResources::Cleanup() {
     if (freed) return;
     if (completed == VK_NULL_HANDLE) return;
     if (semaphore == VK_NULL_HANDLE) return;
-    
+
     freed = true;
 
     auto *dev = get_device(device);
@@ -171,8 +188,8 @@ void StagingResources::Cleanup() {
         auto uncompressed_size = MemoryUsage(VK_FORMAT_R8G8B8A8_UNORM) + MemoryUsage(VK_FORMAT_R16G16B16A16_SFLOAT);
         auto total_size = MemoryUsage();
         double memory_usage_mb = ((double)(total_size - uncompressed_size)) / 1024 / 1024;
-        Logger::log("info", "Cleaning up batch %d with %d buffers (%d MB raw, %d MB recompressed), draw took %d ms, throughput = %0.2f MB/s", 
-            id, Size(), uncompressed_size / 1024 / 1024, (total_size - uncompressed_size) / 1024 / 1024, timestamp - this->timestamp, 
+        Logger::log("info", "Cleaning up batch %d with %d buffers (%d MB raw, %d MB recompressed), draw took %d ms, throughput = %0.2f MB/s",
+            id, Size(), uncompressed_size / 1024 / 1024, (total_size - uncompressed_size) / 1024 / 1024, timestamp - this->timestamp,
             memory_usage_mb / (timestamp - this->timestamp) * 1000);
     }
 
@@ -212,10 +229,10 @@ void StagingResources::Cleanup() {
             for (const auto& q : trackedQueries) {
                 uint64_t startTicks = allPoolResults[q.poolIndex][q.startQueryId];
                 uint64_t endTicks = allPoolResults[q.poolIndex][q.endQueryId];
-                
+
                 if (endTicks >= startTicks) {
                     double durationMs = (double)(endTicks - startTicks) / (1000000.0f / timestampPeriod);
-                    
+
                     auto& stat = statsRollup[q.label];
                     stat.totalTimeMs += durationMs;
                     stat.totalSizeBytes += q.textureSize;
@@ -251,7 +268,7 @@ void StagingResources::Cleanup() {
                         throughput(subTotalSizeMb, substat.totalTimeMs));
                 }
             }
-            
+
         }
     }
 
@@ -282,7 +299,7 @@ void StagingResources::Cleanup() {
 
             std::stringstream filename;
             std::string id_str = std::to_string(buf->id);
-            filename << dev->dump_buffers_path << "/" 
+            filename << dev->dump_buffers_path << "/"
                      << id_str << "_fmt_" << buf->format << "_" << buf->width << "x" << buf->height << ".bin";
             std::ofstream out(filename.str(), std::ios::out | std::ios::binary);
             out.write(reinterpret_cast<const char*>(mappedData), buf->size);

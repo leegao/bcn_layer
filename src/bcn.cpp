@@ -172,16 +172,16 @@ bool is_supported_bcn_format(struct device *device, VkFormat format) {
     VkPhysicalDeviceDriverProperties driverProps = device->driverProps;
 
     if (device->compute_bcn_auto && ((driverProps.driverID == VK_DRIVER_ID_QUALCOMM_PROPRIETARY && props2.properties.driverVersion > VK_MAKE_VERSION(512, 502, 0)) ||
-                                               driverProps.driverID == VK_DRIVER_ID_MESA_TURNIP)) 
+                                               driverProps.driverID == VK_DRIVER_ID_MESA_TURNIP))
     {
     	return false;
     }
-    
+
     if (is_s3tc(format) && device->compute_bcn_auto && driverProps.driverID == VK_DRIVER_ID_SAMSUNG_PROPRIETARY)
     {
     	return false;
     }
-    
+
 	return is_rgtc(format) || is_s3tc(format) || is_bc6(format) || is_bc7(format);
 }
 
@@ -197,7 +197,7 @@ void upload_static_lut(struct device *dev, struct buffer* lut_buf, const uint32_
         Logger::log("error", "upload_static_lut: vkMapMemory failed with error code %d", result);
         return;
     }
-    
+
     std::memcpy(mapped, data, size_bytes);
     dev->table.UnmapMemory(dev->handle, lut_buf->memory);
 }
@@ -299,10 +299,10 @@ create_bcn_compute_pipelines(struct device *dev)
 		    .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
 		    .pNext = nullptr,
 		    .flags = 0,
-		    .stage = VK_SHADER_STAGE_COMPUTE_BIT,                                                   
-		    .module = bc6ShaderModule,                                                              
+		    .stage = VK_SHADER_STAGE_COMPUTE_BIT,
+		    .module = bc6ShaderModule,
 		    .pName = "main",
-		    .pSpecializationInfo = nullptr                                                      
+		    .pSpecializationInfo = nullptr
 		},
 		{
 		    .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
@@ -409,25 +409,25 @@ create_bcn_compute_pipelines(struct device *dev)
 	}
 
 	VkDescriptorSetLayoutBinding astc_bindings[] = {
-        { 
+        {
             .binding = 0,
             .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
             .descriptorCount = 1,
             .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT
         },
-        { 
+        {
             .binding = 1,
             .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
             .descriptorCount = 1,
             .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT
         },
-        { 
+        {
             .binding = 2,
             .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
             .descriptorCount = 1,
             .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT
         },
-        { 
+        {
             .binding = 3,
             .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
             .descriptorCount = 1,
@@ -530,8 +530,8 @@ create_bcn_compute_pipelines(struct device *dev)
 		    .flags = 0,
 		    .stage = shader_stage_infos[2],
 		    .layout = dev->layout,
-		    .basePipelineHandle = VK_NULL_HANDLE,                                                   
-		    .basePipelineIndex = -1                                                             
+		    .basePipelineHandle = VK_NULL_HANDLE,
+		    .basePipelineIndex = -1
 		},
 		{
 		    .sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
@@ -716,19 +716,12 @@ encode_etc2_compute(struct device *dev,
 		VK_PIPELINE_BIND_POINT_COMPUTE, dev->etc2Layout, 0, 1,
 		&descriptorSet, 0, nullptr);
 
-	VkQueryPool queryPool = VK_NULL_HANDLE;
-    std::pair<uint32_t, uint32_t> query = { UINT32_MAX, UINT32_MAX };
-    if (dev->profile_transfers) {
-        query = cb->currentStagingResources->AllocateQueryPair(
-            commandbuffer, "encode_etc2", format, width * height, queryPool);
+    {
+        auto scopedTimestampQuery = cb->currentStagingResources->MakeScopedTimestampQuery(
+            cb, "encode_etc2", format, width * height,
+            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+        table.CmdDispatch(commandbuffer, (width + 7) / 8, (height + 7) / 8, 1);
     }
-    if (query.first != UINT32_MAX) {
-        table.CmdWriteTimestamp(commandbuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, queryPool, query.first);
-    }
-    table.CmdDispatch(commandbuffer, (width + 7) / 8, (height + 7) / 8, 1);
-	if (query.first != UINT32_MAX) {
-	    table.CmdWriteTimestamp(commandbuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, queryPool, query.second);
-	}
 
 	return VK_SUCCESS;
 }
@@ -794,7 +787,7 @@ encode_astc_compute(struct device *dev,
 		.offset = 0,
 		.range = VK_WHOLE_SIZE
 	};
-	
+
 	VkDescriptorBufferInfo astc_2p_lut_info = {
 		.buffer = dev->astc2pLutBuffer->handle,
 		.offset = 0,
@@ -864,19 +857,12 @@ encode_astc_compute(struct device *dev,
 		VK_PIPELINE_BIND_POINT_COMPUTE, dev->astcLayout, 0, 1,
 		&descriptorSet, 0, nullptr);
 
-	VkQueryPool queryPool = VK_NULL_HANDLE;
-    std::pair<uint32_t, uint32_t> query = { UINT32_MAX, UINT32_MAX };
-    if (dev->profile_transfers) {
-        query = cb->currentStagingResources->AllocateQueryPair(
-            commandbuffer, "encode_astc", format, width * height, queryPool);
+    {
+        auto scopedTimestampQuery = cb->currentStagingResources->MakeScopedTimestampQuery(
+            cb, "encode_astc", format, width * height,
+            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+        table.CmdDispatch(commandbuffer, (width + 7) / 8, (height + 7) / 8, 1);
     }
-    if (query.first != UINT32_MAX) {
-        table.CmdWriteTimestamp(commandbuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, queryPool, query.first);
-    }
-    table.CmdDispatch(commandbuffer, (width + 7) / 8, (height + 7) / 8, 1);
-	if (query.first != UINT32_MAX) {
-	    table.CmdWriteTimestamp(commandbuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, queryPool, query.second);
-	}
 
 	return VK_SUCCESS;
 }
@@ -892,10 +878,10 @@ add_debug_watermark(struct device *dev,
     VkResult result;
 	VkLayerDispatchTable table;
 	VkDevice device;
-   
+
 	table = dev->table;
 	device = dev->handle;
-   
+
 	auto commandbuffer = cb->handle;
 	uint width = copy_region->imageExtent.width;
 	uint height = copy_region->imageExtent.height;
@@ -907,7 +893,7 @@ add_debug_watermark(struct device *dev,
 		.height = height,
 		.flags = flags,
 	};
-   
+
 	VkDescriptorPool pool;
 	VkDescriptorSet descriptorSet;
 	result = dev->descriptorSetAllocator->allocate(dev->etc2SetLayout, &pool, &descriptorSet);
@@ -916,19 +902,19 @@ add_debug_watermark(struct device *dev,
 		return result;
 	}
 	cb->currentStagingResources->AddDescriptorSet(pool, descriptorSet);
-   
+
 	VkDescriptorBufferInfo src_info = {
 		.buffer = decodedBuffer->handle,
 		.offset = 0,
 		.range = VK_WHOLE_SIZE
 	};
-   
+
 	VkDescriptorBufferInfo dst_info = {
 		.buffer = stagingBuffer->handle,
 		.offset = 0,
 		.range = VK_WHOLE_SIZE
 	};
-   
+
 	VkWriteDescriptorSet desc_writes[2];
 	desc_writes[0] = VkWriteDescriptorSet {
 	    .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
@@ -946,7 +932,7 @@ add_debug_watermark(struct device *dev,
 	    .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
 	    .pBufferInfo = &dst_info,
 	};
-   
+
 	table.UpdateDescriptorSets(device, 2, desc_writes, 0, NULL);
 	VkBufferMemoryBarrier bufferBarrier = {
            .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
@@ -958,7 +944,7 @@ add_debug_watermark(struct device *dev,
            .offset = 0,
            .size = VK_WHOLE_SIZE
        };
-   
+
     table.CmdPipelineBarrier(
         commandbuffer,
         VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
@@ -975,21 +961,14 @@ add_debug_watermark(struct device *dev,
 	table.CmdBindDescriptorSets(commandbuffer,
 		VK_PIPELINE_BIND_POINT_COMPUTE, dev->etc2Layout, 0, 1,
 		&descriptorSet, 0, nullptr);
-   
-	VkQueryPool queryPool = VK_NULL_HANDLE;
-    std::pair<uint32_t, uint32_t> query = { UINT32_MAX, UINT32_MAX };
-    if (dev->profile_transfers) {
-        query = cb->currentStagingResources->AllocateQueryPair(
-            commandbuffer, "watermarking", format, width * height, queryPool);
+
+    {
+        auto scopedTimestampQuery = cb->currentStagingResources->MakeScopedTimestampQuery(
+            cb, "watermarking", format, width * height,
+            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+        table.CmdDispatch(commandbuffer, (width + 7) / 8, (height + 7) / 8, 1);
     }
-    if (query.first != UINT32_MAX) {
-        table.CmdWriteTimestamp(commandbuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, queryPool, query.first);
-    }
-    table.CmdDispatch(commandbuffer, (width + 7) / 8, (height + 7) / 8, 1);
-	if (query.first != UINT32_MAX) {
-	    table.CmdWriteTimestamp(commandbuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, queryPool, query.second);
-	}
-   
+
 	return VK_SUCCESS;
 }
 
@@ -1010,7 +989,7 @@ VkResult decompress_bcn_compute(struct device *dev,
 
 	table = dev->table;
 	device = dev->handle;
-	
+
 	struct command_buffer *cb;
 	{
 	    scoped_lock l(global_lock);
@@ -1067,7 +1046,7 @@ VkResult decompress_bcn_compute(struct device *dev,
 	cb->currentStagingResources->AddDescriptorSet(pool, descriptorSet);
 
 	VkWriteDescriptorSet desc_writes[2];
-	
+
 	VkDescriptorBufferInfo src_info = {
 		.buffer = srcBuffer->handle,
 		.offset = static_cast<VkDeviceSize>(offset),
@@ -1115,14 +1094,14 @@ VkResult decompress_bcn_compute(struct device *dev,
 		.sampler = VK_NULL_HANDLE,
 		.imageLayout = VK_IMAGE_LAYOUT_GENERAL
 	};
-	
-	if (!use_image_view) {                                
+
+	if (!use_image_view) {
 		desc_writes[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-		desc_writes[1].pImageInfo = nullptr;                                                    
-		desc_writes[1].pBufferInfo = &dst_info;                                                 
+		desc_writes[1].pImageInfo = nullptr;
+		desc_writes[1].pBufferInfo = &dst_info;
 		desc_writes[1].pTexelBufferView = nullptr;
-	} 
-	else {	
+	}
+	else {
 		VkComponentMapping components_mapping = {
 			.r = VK_COMPONENT_SWIZZLE_IDENTITY,
 			.g = VK_COMPONENT_SWIZZLE_IDENTITY,
@@ -1156,16 +1135,16 @@ VkResult decompress_bcn_compute(struct device *dev,
 
 		image_info.imageView = dstImageView;
 		cb->currentStagingResources->AddStagingImageView(dstImageView);
-		
-		desc_writes[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;                      
-		desc_writes[1].pImageInfo = &image_info;                                                    
+
+		desc_writes[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+		desc_writes[1].pImageInfo = &image_info;
 		desc_writes[1].pBufferInfo = nullptr;
 		desc_writes[1].pTexelBufferView = nullptr;
 	}
 
 	table.UpdateDescriptorSets(device,
 		2, desc_writes, 0, NULL);
-  
+
     VkPipeline bcnPipeline;
     if (is_s3tc(format)) {
     	bcnPipeline = dev->s3tcPipeline;
@@ -1179,7 +1158,7 @@ VkResult decompress_bcn_compute(struct device *dev,
     else {
     	bcnPipeline = dev->bc7Pipeline;
     }
-    
+
 	table.CmdBindPipeline(commandbuffer,
 		VK_PIPELINE_BIND_POINT_COMPUTE, bcnPipeline);
 
@@ -1202,8 +1181,8 @@ VkResult decompress_bcn_compute(struct device *dev,
 				.layerCount = copy_region->imageSubresource.layerCount
 			},
 		};
-		table.CmdPipelineBarrier(commandbuffer, 
-			VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 
+		table.CmdPipelineBarrier(commandbuffer,
+			VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
 			0, 0, nullptr, 0, nullptr, 1, &first_barrier);
 	} else {
         VkBufferMemoryBarrier first_barrier = {
@@ -1217,8 +1196,8 @@ VkResult decompress_bcn_compute(struct device *dev,
             .offset = 0,
             .size = VK_WHOLE_SIZE
         };
-        table.CmdPipelineBarrier(commandbuffer, 
-            VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 
+        table.CmdPipelineBarrier(commandbuffer,
+            VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
             0, 0, nullptr, 1, &first_barrier, 0, nullptr);
 	}
 
@@ -1227,22 +1206,15 @@ VkResult decompress_bcn_compute(struct device *dev,
 		sizeof(constants), &constants);
 
 	table.CmdBindDescriptorSets(commandbuffer,
-		VK_PIPELINE_BIND_POINT_COMPUTE, dev->layout, 0, 1, 
+		VK_PIPELINE_BIND_POINT_COMPUTE, dev->layout, 0, 1,
 		&descriptorSet, 0, nullptr);
 
-	VkQueryPool queryPool = VK_NULL_HANDLE;
-    std::pair<uint32_t, uint32_t> query = { UINT32_MAX, UINT32_MAX };
-    if (dev->profile_transfers) {
-        query = cb->currentStagingResources->AllocateQueryPair(
-            commandbuffer, "decompress_bcn", format, width * height * depth, queryPool);
+    {
+        auto scopedTimestampQuery = cb->currentStagingResources->MakeScopedTimestampQuery(
+            cb, "decompress_bcn", format, width * height * depth,
+            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+        table.CmdDispatch(commandbuffer, (width + 7) / 8, (height + 7) / 8, depth);
     }
-    if (query.first != UINT32_MAX) {
-        table.CmdWriteTimestamp(commandbuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, queryPool, query.first);
-    }
-	table.CmdDispatch(commandbuffer, (width + 7) / 8, (height + 7) / 8, depth);
-	if (query.first != UINT32_MAX) {
-	    table.CmdWriteTimestamp(commandbuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, queryPool, query.second);
-	}
 
 	if (add_watermark) {
     	// srcBuffer -> [waterMarkedDecodedBuffer -> stagingBuffer] if no transcode and yes watermark
@@ -1279,11 +1251,11 @@ VkResult decompress_bcn_compute(struct device *dev,
 		};
 
 		table.CmdPipelineBarrier(commandbuffer,
-			VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 
+			VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
 			VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT,
 		    0, 0, nullptr, 0, nullptr, 1, &second_barrier);
 	}
-	
+
 	// srcBuffer -> [decodedBuffer -> stagingBuffer] if yes transcode and no watermark
 	// srcBuffer -> decodedBuffer -> [waterMarkedDecodedBuffer -> stagingBuffer] if yes transcode and yes watermark
 	auto sourceDecodedBuffer = add_watermark ? waterMarkedDecodedBuffer.get() : decodedBuffer.get();
