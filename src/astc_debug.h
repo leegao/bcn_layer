@@ -24,4 +24,10 @@ struct STRUCT_ALIGN(16) AstcAnalysis {
     uint64_t sum_color_spread_squared;
     uint64_t sum_weights;
     uint64_t sum_weights_squared;
+    uint64_t quantized_weight_errors_3;
+    uint64_t quantized_weight_errors_7;
+    uint64_t quantized_weight_errors_15;
+    uint64_t quantized_color_errors_47;
+    uint64_t quantized_color_errors_191;
+    uint64_t quantized_color_errors_255;
 };

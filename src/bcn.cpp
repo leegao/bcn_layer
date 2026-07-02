@@ -798,7 +798,7 @@ encode_astc_compute(struct device *dev,
 		cb->currentStagingResources->AddStagingBuffer(std::move(debugBuffer));
 
 		auto analysisOutputBuffer = create_staging_buffer(dev, sizeof(struct AstcAnalysis),
-		            VK_FORMAT_UNDEFINED, 1, 1, "analysis_output");
+		            VK_FORMAT_UNDEFINED, width, height, "analysis_output");
 		analysis_output_info.buffer = analysisOutputBuffer->handle;
 		cb->currentStagingResources->AddStagingBuffer(std::move(analysisOutputBuffer));
 
@@ -868,7 +868,7 @@ encode_astc_compute(struct device *dev,
         auto scopedTimestampQuery = cb->currentStagingResources->MakeScopedTimestampQuery(
             cb, "analyze_astc", format, width * height * sizeof(AstcDebug) / 16,
             VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
-        table.CmdDispatch(commandbuffer, (width + 7) / 8, (height + 7) / 8, 1);
+        table.CmdDispatch(commandbuffer, (width + 31) / 32, (height + 31) / 32, 1);
     }
 
 	return VK_SUCCESS;
