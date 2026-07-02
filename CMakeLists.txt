@@ -75,78 +75,78 @@ foreach(SHADER ${SHADER_NAMES})
     list(APPEND SPIRV_HEADERS ${HEADER_OUT})
 endforeach()
 
-# ETC2 encode shader
 find_program(SLANG_COMPILER slangc)
 option(FORCE_GLSL "Force the build to use GLSL instead of Slang" OFF)
 
-set(ETC2_SLANG "${CMAKE_CURRENT_SOURCE_DIR}/src/etc2_encode.slang")
-set(ETC2_SPV "${CMAKE_CURRENT_BINARY_DIR}/src/etc2_encode.spv")
-set(ETC2_HEADER "${CMAKE_CURRENT_BINARY_DIR}/src/etc2_encode_spv.h")
+set(SLANG_SHADER_NAMES etc2_encode astc_encoder analyze_astc_parameters)
+foreach(SLANG_SHADER ${SLANG_SHADER_NAMES})
+    set(SLANG_SRC "${CMAKE_CURRENT_SOURCE_DIR}/src/${SLANG_SHADER}.slang")
+    set(SLANG_SPV "${CMAKE_CURRENT_BINARY_DIR}/src/${SLANG_SHADER}.spv")
+    set(SLANG_HEADER "${CMAKE_CURRENT_BINARY_DIR}/src/${SLANG_SHADER}_spv.h")
 
-if(SLANG_COMPILER AND NOT FORCE_GLSL)
-    set(ETC2_COMP "${CMAKE_CURRENT_BINARY_DIR}/src/etc2_encode.comp")
-    add_custom_command(
-        OUTPUT ${ETC2_COMP}
-        COMMAND ${CMAKE_COMMAND} -E echo "// AUTO-GENERATED - DO NOT EDIT, see ${ETC2_SLANG}" > ${ETC2_COMP}
-        COMMAND slangc ${ETC2_SLANG} -target glsl -line-directive-mode none -D DISABLE_RECONSTRUCTION >> ${ETC2_COMP}
-        DEPENDS ${ETC2_SLANG}
-        COMMENT "Generating GLSL shader: etc2_encode.comp"
-    )
-else()
-    set(ETC2_COMP "${CMAKE_CURRENT_SOURCE_DIR}/src/etc2_encode.comp")
-    message(STATUS "Shader Compiler: slangc not found or disabled. Using the auto-generated ${ETC2_COMP} instead.")
-    if(FORCE_GLSL)
-        message(WARNING "  Run cmake with -DFORCE_GLSL=OFF to use ${ETC2_SLANG}")
+    if(SLANG_COMPILER AND NOT FORCE_GLSL)
+        set(SLANG_COMP_SRC "${CMAKE_CURRENT_BINARY_DIR}/src/${SLANG_SHADER}.comp")
+        add_custom_command(
+            OUTPUT ${SLANG_COMP_SRC}
+            COMMAND ${CMAKE_COMMAND} -E echo "// AUTO-GENERATED - DO NOT EDIT, see ${SLANG_SRC}" > ${SLANG_COMP_SRC}
+            COMMAND slangc ${SLANG_SRC} -target glsl -line-directive-mode none >> ${SLANG_COMP_SRC}
+            DEPENDS ${SLANG_SRC} "${CMAKE_CURRENT_SOURCE_DIR}/src/astc_pack.slang" "${CMAKE_CURRENT_SOURCE_DIR}/src/astc_debug.slang" "${CMAKE_CURRENT_SOURCE_DIR}/src/astc_debug.h"
+            COMMENT "Generating GLSL shader: ${SLANG_SHADER}.comp"
+        )
+    else()
+        set(SLANG_COMP_SRC "${CMAKE_CURRENT_SOURCE_DIR}/src/${SLANG_SHADER}.comp")
+        message(STATUS "Shader Compiler: slangc not found or disabled. Using the auto-generated ${SLANG_COMP_SRC} instead.")
     endif()
-endif()
 
-add_custom_command(
-    OUTPUT ${ETC2_SPV}
-    COMMAND glslc -O -c ${ETC2_COMP} -o ${ETC2_SPV}
-    DEPENDS ${ETC2_COMP}
-    COMMENT "Compiling ${ETC2_COMP}"
-)
+    add_custom_command(
+        OUTPUT ${SLANG_SPV}
+        COMMAND glslc -c ${SLANG_COMP_SRC} -o ${SLANG_SPV}
+        DEPENDS ${SLANG_COMP_SRC}
+        COMMENT "Compiling ${SLANG_SPV}"
+    )
 
-add_custom_command(
-    OUTPUT ${ETC2_HEADER}
-    COMMAND ${CMAKE_COMMAND} -E chdir "${CMAKE_CURRENT_BINARY_DIR}/src" xxd -i etc2_encode.spv > ${ETC2_HEADER}
-    DEPENDS ${ETC2_SPV}
-    COMMENT "Generating header via xxd: ${ETC2_HEADER}"
-)
-list(APPEND SPIRV_HEADERS ${ETC2_HEADER})
+    add_custom_command(
+        OUTPUT ${SLANG_HEADER}
+        COMMAND ${CMAKE_COMMAND} -E chdir "${CMAKE_CURRENT_BINARY_DIR}/src" xxd -i ${SLANG_SHADER}.spv > ${SLANG_HEADER}
+        DEPENDS ${SLANG_SPV}
+        COMMENT "Generating header via xxd: ${SLANG_HEADER}"
+    )
+    list(APPEND SPIRV_HEADERS ${SLANG_HEADER})
+endforeach()
 
 set(ASTC_SLANG "${CMAKE_CURRENT_SOURCE_DIR}/src/astc_encoder.slang")
 set(ASTC_SPV "${CMAKE_CURRENT_BINARY_DIR}/src/astc_encoder.spv")
 set(ASTC_HEADER "${CMAKE_CURRENT_BINARY_DIR}/src/astc_encoder_spv.h")
-
+set(ASTC_DEBUG_SPV "${CMAKE_CURRENT_BINARY_DIR}/src/astc_encoder_debug.spv")
+set(ASTC_DEBUG_HEADER "${CMAKE_CURRENT_BINARY_DIR}/src/astc_encoder_debug_spv.h")
 if(SLANG_COMPILER AND NOT FORCE_GLSL)
-    set(ASTC_COMP "${CMAKE_CURRENT_BINARY_DIR}/src/astc_encoder.comp")
+    set(ASTC_COMP_DEBUG "${CMAKE_CURRENT_BINARY_DIR}/src/astc_encoder_debug.comp")
     add_custom_command(
-        OUTPUT ${ASTC_COMP}
-        COMMAND ${CMAKE_COMMAND} -E echo "// AUTO-GENERATED - DO NOT EDIT, see ${ASTC_SLANG}" > ${ASTC_COMP}
-        COMMAND slangc ${ASTC_SLANG} -target glsl -line-directive-mode none >> ${ASTC_COMP}
-        DEPENDS ${ASTC_SLANG} "${CMAKE_CURRENT_SOURCE_DIR}/src/astc_pack.slang"
+        OUTPUT ${ASTC_COMP_DEBUG}
+        COMMAND ${CMAKE_COMMAND} -E echo "// AUTO-GENERATED - DO NOT EDIT, see ${ASTC_SLANG}" > ${ASTC_COMP_DEBUG}
+        COMMAND slangc ${ASTC_SLANG} -target glsl -line-directive-mode none -D ENABLE_DEBUG >> ${ASTC_COMP_DEBUG}
+        DEPENDS ${ASTC_SLANG} "${CMAKE_CURRENT_SOURCE_DIR}/src/astc_pack.slang" "${CMAKE_CURRENT_SOURCE_DIR}/src/astc_debug.slang" "${CMAKE_CURRENT_SOURCE_DIR}/src/astc_debug.h"
         COMMENT "Generating GLSL shader: astc_encoder.comp"
     )
 else()
-    set(ASTC_COMP "${CMAKE_CURRENT_SOURCE_DIR}/src/astc_encoder.comp")
-    message(STATUS "Shader Compiler: slangc not found or disabled. Using the auto-generated ${ASTC_COMP} instead.")
+    set(ASTC_COMP_DEBUG "${CMAKE_CURRENT_SOURCE_DIR}/src/astc_encoder_debug.comp")
+    message(STATUS "Shader Compiler: slangc not found or disabled. Using the auto-generated ${ASTC_COMP_DEBUG} instead.")
 endif()
 
 add_custom_command(
-    OUTPUT ${ASTC_SPV}
-    COMMAND glslc -c ${ASTC_COMP} -o ${ASTC_SPV}
-    DEPENDS ${ASTC_COMP}
-    COMMENT "Compiling ${ASTC_SPV}"
+    OUTPUT ${ASTC_DEBUG_SPV}
+    COMMAND glslc -c ${ASTC_COMP_DEBUG} -o ${ASTC_DEBUG_SPV}
+    DEPENDS ${ASTC_COMP_DEBUG}
+    COMMENT "Compiling ${ASTC_DEBUG_SPV}"
 )
 
 add_custom_command(
-    OUTPUT ${ASTC_HEADER}
-    COMMAND ${CMAKE_COMMAND} -E chdir "${CMAKE_CURRENT_BINARY_DIR}/src" xxd -i astc_encoder.spv > ${ASTC_HEADER}
-    DEPENDS ${ASTC_SPV}
-    COMMENT "Generating header via xxd: ${ASTC_HEADER}"
+    OUTPUT ${ASTC_DEBUG_HEADER}
+    COMMAND ${CMAKE_COMMAND} -E chdir "${CMAKE_CURRENT_BINARY_DIR}/src" xxd -i astc_encoder_debug.spv > ${ASTC_DEBUG_HEADER}
+    DEPENDS ${ASTC_DEBUG_SPV}
+    COMMENT "Generating header via xxd: ${ASTC_DEBUG_HEADER}"
 )
-list(APPEND SPIRV_HEADERS ${ASTC_HEADER})
+list(APPEND SPIRV_HEADERS ${ASTC_DEBUG_HEADER})
 
 set(LUT2_BIN "${CMAKE_CURRENT_SOURCE_DIR}/src/lut2.bin")
 set(LUT2_HEADER "${CMAKE_CURRENT_BINARY_DIR}/src/lut2.h")

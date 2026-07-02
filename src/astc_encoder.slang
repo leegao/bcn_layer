@@ -4,6 +4,10 @@
 import astc_pack;
 import encoder_utils;
 
+#ifdef ENABLE_DEBUG
+import astc_debug;
+#endif
+
 [[vk::binding(0, 0)]]
 StructuredBuffer<uint> input_rgba8_buffer;
 
@@ -12,13 +16,6 @@ RWStructuredBuffer<uint4> astc_blocks;
 
 typedef uint8_t4[16] Reconstruction;
 #ifdef ENABLE_DIAGNOSTICS
-struct ASTCParameters {
-  uint32_t ep0;
-  uint32_t ep1;
-  uint8_t weights[16];
-  uint astc_seed;
-  uint partition_map;
-};
 
 struct Diagnostics {
   uint2 start_time;
@@ -29,7 +26,6 @@ struct Diagnostics {
 #else
   uint reconstructed[16];
 #endif
-  ASTCParameters params;
 };
 
 [[vk::binding(4, 0)]]
@@ -169,126 +165,6 @@ void encode_block_AABB(out uint4 endpoint_start, out uint4 endpoint_end,
 
 typedef PackedArray<2, 16> PartitionMap;
 
-void kmeans(out PartitionMap partition_map) {
-  half4 centroids[2];
-  PackedArray<8, 2> partition_counts;
-  centroids[0] = pixels[0].to_unorm();
-  centroids[1] = pixels[15].to_unorm();
-
-  const static int max_iterations = 3;
-  for (uint iter = 0; iter < max_iterations; iter++) {
-    partition_counts.data[0] = 0;
-    for (uint i = 0; i < 16; i++) {
-      var p = pixels[i].to_unorm();
-
-      var best_dist = 1000.0h;
-      uint best_centroid = 0;
-
-      // Nearest centroid through projection
-      for (uint centroid = 0; centroid < 2; centroid++) {
-        var delta = p - centroids[centroid];
-        var d = dot(delta, delta);
-        if (d < best_dist) {
-          best_dist = d;
-          best_centroid = centroid;
-        }
-      }
-
-      partition_map[i] = best_centroid;
-      partition_counts[best_centroid]++;
-    }
-
-    // Update centroids
-    if (iter < max_iterations - 1) {
-      half4 new_sums[2] = {};
-      for (uint i = 0; i < 16; i++) {
-        var p = pixels[i].to_unorm();
-        var idx = partition_map[i];
-        new_sums[idx] += p;
-      }
-      for (uint centroid = 0; centroid < 2; centroid++) {
-        var count = partition_counts[centroid];
-        if (count != 0) {
-          centroids[centroid] = new_sums[centroid] / half(count);
-        }
-      }
-    }
-  }
-}
-
-extension half4 {
-  half4 mean(half4 ep0, half4 ep1) { return half4(this) / 255.0h; }
-}
-
-uint get_closest_seed2(uint input, out uint final_pattern) {
-  uint key = canonicalize_lut2(input);
-  uint seed = (astc_2p_lut_s2[key / 3] >> ((key % 3) * 10)) & 0x3FF;
-  final_pattern = lut2[seed];
-  return seed;
-}
-
-void snap(inout PartitionMap partition_map, out uint astc_seed) {
-  static_assert(partition_map.kStorageCount == 1,
-                "PartitionMap must have exactly 1 storage element");
-
-  var raw_map = partition_map.data[0];
-  uint final_mask;
-  astc_seed = get_closest_seed2(raw_map, final_mask);
-  partition_map.data[0] = final_mask;
-}
-
-// void encode_block_2p(out uint4 ep0_u8, out uint4 ep1_u8, out uint4 ep2_u8,
-//                      out uint4 ep3_u8, out uint weights[16],
-//                      out PartitionMap partition_map, out uint astc_seed) {
-//   half4 ep0 = 0.0h, ep1 = 0.0h, ep2 = 0.0h, ep3 = 0.0h;
-
-//   // Line-clustering E-M updates
-//   // partition_map = PartitionMap( { 1, 1, 1, 1, 1, 1, 1, 1 });
-//   // var l0 = find_best_eps_via_pca(partition_map, 0, ep0, ep1);
-//   // var l1 = find_best_eps_via_pca(partition_map, 1, ep2, ep3);
-//   // cluster_lines(partition_map, l0, l1);
-//   // l0 = find_best_eps_via_pca(partition_map, 0, ep0, ep1);
-//   // l1 = find_best_eps_via_pca(partition_map, 1, ep2, ep3);
-//   // cluster_lines(partition_map, l0, l1);
-//   // l0 = find_best_eps_via_pca(partition_map, 0, ep0, ep1);
-//   // l1 = find_best_eps_via_pca(partition_map, 1, ep2, ep3);
-//   // cluster_lines(partition_map, l0, l1);
-
-//   kmeans(partition_map);
-//   snap(partition_map, astc_seed);
-//   find_best_eps_via_pca(partition_map, 0, ep0, ep1);
-//   find_best_eps_via_pca(partition_map, 1, ep2, ep3);
-//   // 99.9% of the time, this will catch blue contract
-//   if (ep1.x + ep1.y + ep1.z < ep0.x + ep0.y + ep0.z) {
-//     var temp = ep0;
-//     ep0 = ep1;
-//     ep1 = temp;
-//   }
-//   if (ep3.x + ep3.y + ep3.z < ep2.x + ep2.y + ep2.z) {
-//     var temp = ep2;
-//     ep2 = ep3;
-//     ep3 = temp;
-//   }
-
-//   ep0_u8 = uint4(ep0 * 255.0h);
-//   ep1_u8 = uint4(ep1 * 255.0h);
-//   ep2_u8 = uint4(ep2 * 255.0h);
-//   ep3_u8 = uint4(ep3 * 255.0h);
-//   solve_weights(partition_map, 0, ep0, ep1, weights);
-//   solve_weights(partition_map, 1, ep2, ep3, weights);
-//   return;
-// }
-
-void swap_endpoints(inout uint4 ep0, inout uint4 ep1, inout uint weights[16]) {
-  // See Table C.2.17
-  var temp = ep0;
-  ep0 = ep1;
-  ep1 = temp;
-  for (int i = 0; i < 16; i++) {
-    weights[i] = clamp(255 - int(weights[i]), 0, 255);
-  }
-}
-
 [shader("compute")]
 [numthreads(8, 8, 1)]
 void main(uint3 gl_GlobalInvocationID: SV_DispatchThreadID) {
@@ -356,18 +232,13 @@ void main(uint3 gl_GlobalInvocationID: SV_DispatchThreadID) {
   packed_1p = pack_astc_4x4_block(eps, weights_1p, use_alpha);
   astc_blocks[buffer_index] = packed_1p;
 
+#ifdef ENABLE_DEBUG
+  log_debug(buffer_index, ep0, ep1, weights_1p);
+#endif
+
 #ifdef ENABLE_DIAGNOSTICS
   diagnostics[buffer_index].start_time = startTime;
   // diagnostics[buffer_index].mse =
   //     get_quant_ep_mode(quant_weight_mode_1p, 16, 8, 1u);
-
-  // diagnostics[buffer_index].params.ep0 = ep0.x | (ep0.y << 8) | (ep0.z <<
-  // 16); diagnostics[buffer_index].params.ep1 = ep1.x | (ep1.y << 8) | (ep1.z
-  // << 16); for (int i = 0; i < 16; i++) {
-  //   diagnostics[buffer_index].params.weights[i] =
-  //       uint8_t(weights_2p[i] & 0xFFu);
-  // }
-  // diagnostics[buffer_index].params.astc_seed = astc_seed;
-  // diagnostics[buffer_index].params.partition_map = partition_map.data[0];
 #endif
 }

@@ -7,7 +7,7 @@ std::unordered_map<VkBuffer, std::unique_ptr<struct buffer>> buffersMap;
 std::atomic<int> bufferIdCounter;
 
 std::unique_ptr<struct buffer>
-create_staging_buffer(struct device *dev, int size, VkFormat format, int width, int height)
+create_staging_buffer(struct device *dev, int size, VkFormat format, int width, int height, std::string_view label)
 {
 	VkResult result;
 	VkBuffer buffer;
@@ -22,7 +22,7 @@ create_staging_buffer(struct device *dev, int size, VkFormat format, int width, 
 	}
 
 	// [info]: buffer handle: 0xd2a0000000d2a, size: 64, mem size: 64, fmt: 97, width: 2, height: 2
-	// The descriptor buffer (VkBuffer 0xd2a0000000d2a) size is 64 bytes, 64 bytes were bound, 
+	// The descriptor buffer (VkBuffer 0xd2a0000000d2a) size is 64 bytes, 64 bytes were bound,
 	// and the highest out of bounds access was at [79] bytes
 	size = (size + align) & ~align;
 	VkBufferCreateInfo buffer_create_info = {
@@ -35,7 +35,7 @@ create_staging_buffer(struct device *dev, int size, VkFormat format, int width, 
 		.queueFamilyIndexCount = 0,
 		.pQueueFamilyIndices = nullptr
 	};
-	
+
 	result = table.CreateBuffer(device, &buffer_create_info, nullptr, &buffer);
 
 	if (result != VK_SUCCESS) {
@@ -73,6 +73,7 @@ create_staging_buffer(struct device *dev, int size, VkFormat format, int width, 
 	staging_buf->alloc = nullptr;
 	staging_buf->size = size;
 	staging_buf->format = format;
+	staging_buf->label = label;
 	staging_buf->width = width;
 	staging_buf->height = height;
 	staging_buf->id = id;
@@ -107,7 +108,7 @@ BCnLayer_CreateBuffer(VkDevice device,
 
 	table = dev->table;
 
-	create_info.usage |= VK_BUFFER_USAGE_STORAGE_BUFFER_BIT; 
+	create_info.usage |= VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
 
 	result = table.CreateBuffer(device, &create_info, pAllocator, pBuffer);
 	if (result != VK_SUCCESS) {
@@ -127,7 +128,7 @@ BCnLayer_CreateBuffer(VkDevice device,
 		scoped_lock l(global_lock);
 		buffersMap[*pBuffer] = std::move(buf);
 	}
-	
+
 	return VK_SUCCESS;
 }
 

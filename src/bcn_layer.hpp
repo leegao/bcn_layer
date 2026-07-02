@@ -25,9 +25,9 @@
 #define VK_LAYER_EXPORT extern "C"
 #endif
 
-#define VK_DRIVER_ID_QUALCOMM_PROPRIETARY 8                                  
-#define VK_DRIVER_ID_ARM_PROPRIETARY 9                                       
-#define VK_DRIVER_ID_MESA_TURNIP 18                                         
+#define VK_DRIVER_ID_QUALCOMM_PROPRIETARY 8
+#define VK_DRIVER_ID_ARM_PROPRIETARY 9
+#define VK_DRIVER_ID_MESA_TURNIP 18
 #define VK_DRIVER_ID_SAMSUNG_PROPRIETARY 21
 
 template <typename T>
@@ -65,8 +65,8 @@ public:
         uint32_t maxSets = 100;
     };
 
-    explicit DescriptorSetAllocator(struct device* device, const PoolSizes& defaultSizes) 
-        : device(device), 
+    explicit DescriptorSetAllocator(struct device* device, const PoolSizes& defaultSizes)
+        : device(device),
           poolSizes(defaultSizes) { createNewPool(&activePool); }
     ~DescriptorSetAllocator() { cleanup(); }
 
@@ -99,10 +99,14 @@ struct device {
 	VkPipeline bc7Pipeline;
 	VkPipeline etc2Pipeline;
 	VkPipeline astcPipeline;
+	VkPipeline astcDebugPipeline;
+	VkPipeline analyzeAstcDebugPipeline;
 	VkPipeline watermarkPipeline;
 	VkPipelineLayout layout;
 	VkPipelineLayout etc2Layout;
 	VkPipelineLayout astcLayout;
+	VkPipelineLayout astcDebugLayout;
+	VkPipelineLayout analyzeAstcLayout;
 	VkQueue queue;
 	uint32_t memoryIndex;
 	int use_image_view = 0;
@@ -111,9 +115,12 @@ struct device {
 	int transcode_to_astc = 0;
 	int profile_transfers = 0;
 	int add_watermark = 0;
+	int debug_astc = 0;
 	VkDescriptorSetLayout setLayout;
 	VkDescriptorSetLayout etc2SetLayout;
 	VkDescriptorSetLayout astcSetLayout;
+	VkDescriptorSetLayout astcDebugSetLayout;
+	VkDescriptorSetLayout analyzeAstcSetLayout;
 	std::unique_ptr<struct buffer> lut2Buffer;
 	std::unique_ptr<struct buffer> astc2pLutBuffer;
 	const VkAllocationCallbacks *alloc;

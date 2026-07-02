@@ -505,27 +505,62 @@ void FinalizerThread(struct device* dev) {
     }
 }
 
-bool CheckFor8BitSupport(VkInstance instance, VkPhysicalDevice physicalDevice) {
+struct BufferFeatures {
+    bool shaderBufferInt64Atomics;
+    bool shaderSharedInt64Atomics;
+    bool storageBuffer8BitAccess;
+    bool storageBuffer16BitAccess;
+    bool shaderInt8;
+    bool shaderFloat16;
+};
+
+BufferFeatures CheckForBufferFeatureSupport(VkInstance instance, VkPhysicalDevice physicalDevice) {
     auto props = propertiesMap[GetKey(physicalDevice)];
     if (props.properties.apiVersion < VK_API_VERSION_1_1) {
         // 1.0 does not support 8bit
-        return false;
+        return {
+            .shaderBufferInt64Atomics = false,
+            .shaderSharedInt64Atomics = false,
+            .storageBuffer8BitAccess = false,
+            .storageBuffer16BitAccess = false,
+            .shaderInt8 = false,
+            .shaderFloat16 = false,
+        };
     }
 
-    VkPhysicalDevice8BitStorageFeaturesKHR storage8 = {
-        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_8BIT_STORAGE_FEATURES_KHR,
+    VkPhysicalDeviceShaderAtomicInt64Features int64Atomics = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_ATOMIC_INT64_FEATURES,
     };
-    VkPhysicalDeviceShaderFloat16Int8FeaturesKHR arithmetic8 = {
-        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_FLOAT16_INT8_FEATURES_KHR,
-        .pNext = &storage8,
-    };
-    VkPhysicalDeviceFeatures2 features = {
-        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
-        .pNext = &arithmetic8,
-    };
-    instanceDispatch[GetKey(instance)].GetPhysicalDeviceFeatures2(physicalDevice, &features);
 
-    return storage8.storageBuffer8BitAccess && arithmetic8.shaderInt8;
+    VkPhysicalDevice8BitStorageFeaturesKHR storage8Bit = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_8BIT_STORAGE_FEATURES_KHR,
+        .pNext = &int64Atomics
+    };
+
+    VkPhysicalDevice16BitStorageFeaturesKHR storage16Bit = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_16BIT_STORAGE_FEATURES_KHR,
+        .pNext = &storage8Bit
+    };
+
+    VkPhysicalDeviceShaderFloat16Int8FeaturesKHR arithmeticFloat16Int8 = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_FLOAT16_INT8_FEATURES_KHR,
+        .pNext = &storage16Bit,
+    };
+
+    VkPhysicalDeviceFeatures2 features2 = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
+        .pNext = &arithmeticFloat16Int8,
+    };
+
+    instanceDispatch[GetKey(instance)].GetPhysicalDeviceFeatures2(physicalDevice, &features2);
+    return {
+        .shaderBufferInt64Atomics = (int64Atomics.shaderBufferInt64Atomics == VK_TRUE),
+        .shaderSharedInt64Atomics = (int64Atomics.shaderSharedInt64Atomics == VK_TRUE),
+        .storageBuffer8BitAccess  = (storage8Bit.storageBuffer8BitAccess == VK_TRUE),
+        .storageBuffer16BitAccess = (storage16Bit.storageBuffer16BitAccess == VK_TRUE),
+        .shaderInt8               = (arithmeticFloat16Int8.shaderInt8 == VK_TRUE),
+        .shaderFloat16            = (arithmeticFloat16Int8.shaderFloat16 == VK_TRUE),
+    };
 }
 
 VkPhysicalDeviceFaultFeaturesEXT CheckForFaultSupport(VkInstance instance, VkPhysicalDevice physicalDevice) {
@@ -585,6 +620,7 @@ BCnLayer_CreateDevice(VkPhysicalDevice physicalDevice,
     auto transcode_to_astc = getenv("BCN_TRANSCODE_TO_ASTC") ? atoi(getenv("BCN_TRANSCODE_TO_ASTC")) : 0;
     auto profile_transfers = getenv("BCN_PROFILE_TRANSFERS") ? atoi(getenv("BCN_PROFILE_TRANSFERS")) : 0;
     auto add_watermark = getenv("BCN_ADD_WATERMARK") ? atoi(getenv("BCN_ADD_WATERMARK")) : 0;
+    auto debug_astc = getenv("BCN_DEBUG_ASTC_DIAGNOSTICS") ? atoi(getenv("BCN_DEBUG_ASTC_DIAGNOSTICS")) : 0;
 
     if (transcode_to_etc2 && !featuresMap[GetKey(physicalDevice)].textureCompressionETC2) {
         Logger::log("info", "textureCompressionETC2 is not supported, disabling ETC2 transcode");
@@ -603,10 +639,18 @@ BCnLayer_CreateDevice(VkPhysicalDevice physicalDevice,
         Logger::log("info", "shaderInt16 is not supported, disabling ASTC transcode");
         transcode_to_astc = false;
     }
-    bool has8BitSupport = CheckFor8BitSupport(instance, physicalDevice);
+
+    auto bufferFeatures = CheckForBufferFeatureSupport(instance, physicalDevice);
+    bool has8BitSupport = bufferFeatures.storageBuffer8BitAccess && bufferFeatures.shaderInt8;
     if (transcode_to_astc && !has8BitSupport) {
         Logger::log("info", "shaderInt8 is not supported, disabling ASTC transcode");
         transcode_to_astc = false;
+    }
+
+    bool hasAtomic64Support = bufferFeatures.shaderBufferInt64Atomics && bufferFeatures.shaderSharedInt64Atomics;
+    if (debug_astc && !has8BitSupport) {
+        Logger::log("info", "shaderBufferInt64Atomics is not supported, disabling ASTC diagnostics");
+        debug_astc = false;
     }
 
     auto queriedFaultFeatures = CheckForFaultSupport(instance, physicalDevice);
@@ -618,6 +662,7 @@ BCnLayer_CreateDevice(VkPhysicalDevice physicalDevice,
     VkPhysicalDeviceShaderFloat16Int8FeaturesKHR* appFloat16Int8 = nullptr;
     VkPhysicalDeviceFeatures2* appFeatures2 = nullptr;
     VkPhysicalDeviceFaultFeaturesEXT* appFaultFeatures = nullptr;
+    VkPhysicalDeviceShaderAtomicInt64Features* appInt64Atomics = nullptr;
 
     while (ext) {
         if (ext->sType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_8BIT_STORAGE_FEATURES_KHR) {
@@ -630,6 +675,8 @@ BCnLayer_CreateDevice(VkPhysicalDevice physicalDevice,
             appFeatures2 = (VkPhysicalDeviceFeatures2*)ext;
         } else if (ext->sType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FAULT_FEATURES_EXT) {
             appFaultFeatures = (VkPhysicalDeviceFaultFeaturesEXT*)ext;
+        } else if (ext->sType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_ATOMIC_INT64_FEATURES) {
+            appInt64Atomics = (VkPhysicalDeviceShaderAtomicInt64Features*)ext;
         }
         ext = ext->pNext;
     }
@@ -650,23 +697,32 @@ BCnLayer_CreateDevice(VkPhysicalDevice physicalDevice,
     };
 
     if (apiVersion < VK_API_VERSION_1_2) {
-        if (!hasExtension(VK_KHR_8BIT_STORAGE_EXTENSION_NAME)) {
+        if (transcode_to_astc && !hasExtension(VK_KHR_8BIT_STORAGE_EXTENSION_NAME)) {
             // ~78% coverage on Android, but all bifrost+ seems to have it
             // https://vulkan.gpuinfo.org/displayextensiondetail.php?extension=VK_KHR_8bit_storage
             Logger::log("info", "Adding extension " VK_KHR_8BIT_STORAGE_EXTENSION_NAME);
             enabledExtensions.push_back(VK_KHR_8BIT_STORAGE_EXTENSION_NAME);
         }
-        if (!hasExtension(VK_KHR_SHADER_FLOAT16_INT8_EXTENSION_NAME)) {
+        if (transcode_to_astc && !hasExtension(VK_KHR_SHADER_FLOAT16_INT8_EXTENSION_NAME)) {
             // ~100% coverage on Android
             // https://vulkan.gpuinfo.org/displayextensiondetail.php?extension=VK_KHR_shader_float16_int8
             Logger::log("info", "Adding extension " VK_KHR_SHADER_FLOAT16_INT8_EXTENSION_NAME);
             enabledExtensions.push_back(VK_KHR_SHADER_FLOAT16_INT8_EXTENSION_NAME);
         }
     }
+
+    if (debug_astc && !hasExtension(VK_KHR_SHADER_ATOMIC_INT64_EXTENSION_NAME)) {
+        // ~37% coverage on Android (only used for debugging)
+        // https://vulkan.gpuinfo.org/displayextensiondetail.php?extension=VK_KHR_shader_atomic_int64
+        Logger::log("info", "Adding extension " VK_KHR_SHADER_ATOMIC_INT64_EXTENSION_NAME);
+        enabledExtensions.push_back(VK_KHR_SHADER_ATOMIC_INT64_EXTENSION_NAME);
+    }
+
     if (hasFaultSupport && !hasExtension(VK_EXT_DEVICE_FAULT_EXTENSION_NAME)) {
         Logger::log("info", "Adding extension " VK_EXT_DEVICE_FAULT_EXTENSION_NAME);
         enabledExtensions.push_back(VK_EXT_DEVICE_FAULT_EXTENSION_NAME);
     }
+
     createInfo.ppEnabledExtensionNames = enabledExtensions.data();
     createInfo.enabledExtensionCount = static_cast<uint32_t>(enabledExtensions.size());
 
@@ -691,38 +747,60 @@ BCnLayer_CreateDevice(VkPhysicalDevice physicalDevice,
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_8BIT_STORAGE_FEATURES_KHR,
         .storageBuffer8BitAccess = VK_TRUE,
     };
-    if (app8Bit) {
-        app8Bit->storageBuffer8BitAccess = VK_TRUE;
-    } else {
-        Logger::log("info", "Enabling storageBuffer8BitAccess");
-        layer8BitFeats.pNext = (void*)createInfo.pNext;
-        createInfo.pNext = &layer8BitFeats;
-    }
 
     VkPhysicalDevice16BitStorageFeaturesKHR layer16BitFeats = {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_16BIT_STORAGE_FEATURES_KHR,
         .storageBuffer16BitAccess = VK_TRUE,
     };
-    if (app16Bit) {
-        app16Bit->storageBuffer16BitAccess = VK_TRUE;
-    } else {
-        Logger::log("info", "Enabling storageBuffer16BitAccess");
-        layer16BitFeats.pNext = (void*)createInfo.pNext;
-        createInfo.pNext = &layer16BitFeats;
-    }
 
     VkPhysicalDeviceShaderFloat16Int8FeaturesKHR layerFloat16Int8Feats = {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_FLOAT16_INT8_FEATURES_KHR,
         .shaderFloat16 = VK_TRUE,
         .shaderInt8 = VK_TRUE,
     };
-    if (appFloat16Int8) {
-        appFloat16Int8->shaderFloat16 = VK_TRUE;
-        appFloat16Int8->shaderInt8 = VK_TRUE;
-    } else {
-        Logger::log("info", "Enabling shaderFloat16 and shaderInt8");
-        layerFloat16Int8Feats.pNext = (void*)createInfo.pNext;
-        createInfo.pNext = &layerFloat16Int8Feats;
+
+    if (transcode_to_astc) {
+        if (app8Bit) {
+            app8Bit->storageBuffer8BitAccess = VK_TRUE;
+        } else {
+            Logger::log("info", "Enabling storageBuffer8BitAccess");
+            layer8BitFeats.pNext = (void*)createInfo.pNext;
+            createInfo.pNext = &layer8BitFeats;
+        }
+
+        if (app16Bit) {
+            app16Bit->storageBuffer16BitAccess = VK_TRUE;
+        } else {
+            Logger::log("info", "Enabling storageBuffer16BitAccess");
+            layer16BitFeats.pNext = (void*)createInfo.pNext;
+            createInfo.pNext = &layer16BitFeats;
+        }
+
+        if (appFloat16Int8) {
+            appFloat16Int8->shaderFloat16 = VK_TRUE;
+            appFloat16Int8->shaderInt8 = VK_TRUE;
+        } else {
+            Logger::log("info", "Enabling shaderFloat16 and shaderInt8");
+            layerFloat16Int8Feats.pNext = (void*)createInfo.pNext;
+            createInfo.pNext = &layerFloat16Int8Feats;
+        }
+    }
+
+    VkPhysicalDeviceShaderAtomicInt64Features layerInt64AtomicsFeats = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_ATOMIC_INT64_FEATURES,
+        .shaderBufferInt64Atomics = VK_TRUE,
+        .shaderSharedInt64Atomics = VK_TRUE,
+    };
+
+    if (debug_astc) {
+        if (appInt64Atomics) {
+            appInt64Atomics->shaderBufferInt64Atomics = VK_TRUE;
+            appInt64Atomics->shaderSharedInt64Atomics = VK_TRUE;
+        } else {
+            Logger::log("info", "Enabling shaderBufferInt64Atomics");
+            layerInt64AtomicsFeats.pNext = (void*)createInfo.pNext;
+            createInfo.pNext = &layerInt64AtomicsFeats;
+        }
     }
 
     VkPhysicalDeviceFeatures enabledFeatures;
@@ -859,6 +937,7 @@ BCnLayer_CreateDevice(VkPhysicalDevice physicalDevice,
     device->transcode_to_astc = transcode_to_astc;
     device->profile_transfers = profile_transfers;
     device->add_watermark = add_watermark;
+    device->debug_astc = debug_astc;
 
     if (!transcode_to_etc2 && !transcode_to_astc && !add_watermark) { // transcoding is mutually exclusive with use_image_view
         device->use_image_view = getenv("BCN_COMPUTE_IMAGE_VIEW") ? atoi(getenv("BCN_COMPUTE_IMAGE_VIEW")) : 1;

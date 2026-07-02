@@ -1,6 +1,6 @@
 #include "staging_resources.hpp"
 
-#include "bcn.hpp"
+#include "astc_debug.h"
 #include "bcn_layer.hpp"
 #include "buffer.hpp"
 #include "command_buffer.hpp"
@@ -268,6 +268,11 @@ void StagingResources::Cleanup() {
         }
     }
 
+    uint32_t count;
+    uint64_t total_color_spread_squared = 0;
+    uint64_t total_weights_squared = 0;
+    uint64_t total_weights = 0;
+
     for (auto it = stagingBuffers.begin(); it != stagingBuffers.end();) {
         auto buf = std::move(*it);
         it = stagingBuffers.erase(it);
@@ -304,8 +309,38 @@ void StagingResources::Cleanup() {
             dev->table.UnmapMemory(device, buf->memory);
         }
 
+        if (dev->debug_astc && buf->format == VK_FORMAT_UNDEFINED && buf->label == "analysis_output") {
+            uint32_t* mappedData;
+            VkResult result = dev->table.MapMemory(device, buf->memory, 0, VK_WHOLE_SIZE, 0, (void **) &mappedData);
+            if (result != VK_SUCCESS) {
+                Logger::log("error", "    MapMemory failed: %d", result);
+            }
+            VkMappedMemoryRange mapped_memory_range = {
+                .sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE,
+                .memory = buf->memory,
+                .offset = 0,
+                .size = VK_WHOLE_SIZE,
+            };
+            dev->table.InvalidateMappedMemoryRanges(device, 1, &mapped_memory_range);
+
+            AstcAnalysis* debugData = reinterpret_cast<AstcAnalysis*>(mappedData);
+            count += debugData->count;
+            total_color_spread_squared += debugData->sum_color_spread_squared;
+            total_weights_squared += debugData->sum_weights_squared;
+            total_weights += debugData->sum_weights;
+
+            dev->table.UnmapMemory(device, buf->memory);
+        }
+
         dev->table.DestroyBuffer(device, buf->handle, buf->alloc);
         dev->table.FreeMemory(device, buf->memory, buf->alloc);
+    }
+
+    if (dev->debug_astc) {
+        Logger::log("info", "     + nontrivial blocks: %d", count);
+        Logger::log("info", "     + mean_color_spread_squared: %lf", (double) total_color_spread_squared / 6 / 65025 / count);
+        Logger::log("info", "     + mean_weights_squared: %lf", (double) total_weights_squared / 16 / 65025 / count);
+        Logger::log("info", "     + mean_weights: %lf", (double) total_weights / 16 / 255 / count);
     }
 
     for (auto imageView : stagingImageViews) {

@@ -1,4 +1,7 @@
 #include "bcn.hpp"
+
+#include "analyze_astc_parameters_spv.h"
+#include "astc_debug.h"
 #include "buffer.hpp"
 #include "command_buffer.hpp"
 #include "image.hpp"
@@ -12,6 +15,7 @@
 #include "rgtc_iv_spv.h"
 #include "etc2_encode_spv.h"
 #include "astc_encoder_spv.h"
+#include "astc_encoder_debug_spv.h"
 #include "watermark_spv.h"
 #include "lut2.h"
 #include "astc_2p_lut_s2.h"
@@ -209,166 +213,83 @@ create_bcn_compute_pipelines(struct device *dev)
 	VkLayerDispatchTable table = dev->table;
 	VkDevice device = dev->handle;
 
-	VkShaderModule s3tcShaderModule;
-	VkShaderModuleCreateInfo s3tc_shader_info = {
-		.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-		.pNext = nullptr,
-		.flags = 0,
-		.codeSize = (dev->use_image_view) ? s3tc_iv_spv_len : s3tc_spv_len,
-		.pCode = (dev->use_image_view) ? (const uint32_t *)s3tc_iv_spv : (const uint32_t *)s3tc_spv
-	};
+	#define SHADER_MODULE_CREATE_INFO_WITH_IV(name) \
+		VkShaderModule name##_shader_module; \
+		VkShaderModuleCreateInfo name##_shader_info = { \
+			.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO, \
+			.pNext = nullptr, \
+			.codeSize = (dev->use_image_view) ? name##_iv_spv_len : name##_spv_len, \
+			.pCode = (dev->use_image_view) ? (const uint32_t *)name##_iv_spv : (const uint32_t *)name##_spv \
+		}; \
+		table.CreateShaderModule(device, &name##_shader_info, nullptr, &name##_shader_module);
 
-	VkShaderModule rgtcShaderModule;
-	VkShaderModuleCreateInfo rgtc_shader_info = {
-		.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-		.pNext = nullptr,
-		.flags = 0,
-		.codeSize = (dev->use_image_view) ? rgtc_iv_spv_len : rgtc_spv_len,
-		.pCode = (dev->use_image_view) ? (const uint32_t *)rgtc_iv_spv : (const uint32_t *)rgtc_spv
-	};
+	#define SHADER_MODULE_CREATE_INFO(name) \
+		VkShaderModule name##_shader_module; \
+		VkShaderModuleCreateInfo name##_shader_info = { \
+			.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO, \
+			.pNext = nullptr, \
+			.codeSize = name##_spv_len, \
+			.pCode = (const uint32_t *)name##_spv \
+		}; \
+		table.CreateShaderModule(device, &name##_shader_info, nullptr, &name##_shader_module);
 
-	VkShaderModule bc6ShaderModule;
-	VkShaderModuleCreateInfo bc6_shader_info = {
-	    .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-	    .pNext = nullptr,
-	    .flags = 0,
-	    .codeSize = (dev->use_image_view) ? bc6_iv_spv_len : bc6_spv_len,
-	    .pCode = (dev->use_image_view) ? (const uint32_t *)bc6_iv_spv : (const uint32_t *)bc6_spv
-	};
+	SHADER_MODULE_CREATE_INFO_WITH_IV(s3tc);
+	SHADER_MODULE_CREATE_INFO_WITH_IV(rgtc);
+	SHADER_MODULE_CREATE_INFO_WITH_IV(bc6);
+	SHADER_MODULE_CREATE_INFO_WITH_IV(bc7);
 
-	VkShaderModule bc7ShaderModule;
-	VkShaderModuleCreateInfo bc7_shader_info = {
-		.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-	    .pNext = nullptr,
-	    .flags = 0,
-	    .codeSize = (dev->use_image_view) ? bc7_iv_spv_len : bc7_spv_len,
-	    .pCode = (dev->use_image_view) ? (const uint32_t *)bc7_iv_spv : (const uint32_t *)bc7_spv
-	};
+	SHADER_MODULE_CREATE_INFO(etc2_encode);
+	SHADER_MODULE_CREATE_INFO(astc_encoder);
+	SHADER_MODULE_CREATE_INFO(astc_encoder_debug);
+	SHADER_MODULE_CREATE_INFO(analyze_astc_parameters);
+	SHADER_MODULE_CREATE_INFO(watermark);
 
-	VkShaderModule etc2ShaderModule;
-	VkShaderModuleCreateInfo etc2_shader_info = {
-		.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-	    .pNext = nullptr,
-	    .flags = 0,
-	    .codeSize = etc2_encode_spv_len,
-	    .pCode = (const uint32_t *) etc2_encode_spv
-	};
-
-	VkShaderModule astcShaderModule;
-    VkShaderModuleCreateInfo astc_shader_info = {
-        .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-        .codeSize = astc_encoder_spv_len,
-        .pCode = (const uint32_t *) astc_encoder_spv,
-    };
-
-   	VkShaderModule watermarkShaderModule;
-    VkShaderModuleCreateInfo watermark_shader_info = {
-        .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-        .codeSize = watermark_spv_len,
-        .pCode = (const uint32_t *) watermark_spv,
-    };
-
-	table.CreateShaderModule(device, &s3tc_shader_info, nullptr, &s3tcShaderModule);
-	table.CreateShaderModule(device, &bc6_shader_info, nullptr, &bc6ShaderModule);
-	table.CreateShaderModule(device, &bc7_shader_info, nullptr, &bc7ShaderModule);
-	table.CreateShaderModule(device, &rgtc_shader_info, nullptr, &rgtcShaderModule);
-	table.CreateShaderModule(device, &etc2_shader_info, nullptr, &etc2ShaderModule);
-	table.CreateShaderModule(device, &astc_shader_info, nullptr, &astcShaderModule);
-	table.CreateShaderModule(device, &watermark_shader_info, nullptr, &watermarkShaderModule);
-
+	#define SHADER_STAGE_CREATE_INFO(name) \
+		{ \
+			.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, \
+			.pNext = nullptr, \
+			.stage = VK_SHADER_STAGE_COMPUTE_BIT, \
+			.module = name##_shader_module, \
+			.pName = "main", \
+			.pSpecializationInfo = nullptr \
+		}
 	VkPipelineShaderStageCreateInfo shader_stage_infos[] = {
-		{
-			.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-			.pNext = nullptr,
-			.flags = 0,
-			.stage = VK_SHADER_STAGE_COMPUTE_BIT,
-			.module = s3tcShaderModule,
-			.pName = "main",
-			.pSpecializationInfo = nullptr
-		},
-		{
-			.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-			.pNext = nullptr,
-			.flags = 0,
-			.stage = VK_SHADER_STAGE_COMPUTE_BIT,
-			.module = rgtcShaderModule,
-			.pName = "main",
-			.pSpecializationInfo = nullptr
-		},
-		{
-		    .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-		    .pNext = nullptr,
-		    .flags = 0,
-		    .stage = VK_SHADER_STAGE_COMPUTE_BIT,
-		    .module = bc6ShaderModule,
-		    .pName = "main",
-		    .pSpecializationInfo = nullptr
-		},
-		{
-		    .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-		    .pNext = nullptr,
-		    .flags = 0,
-		    .stage = VK_SHADER_STAGE_COMPUTE_BIT,
-		    .module = bc7ShaderModule,
-		    .pName = "main",
-		    .pSpecializationInfo = nullptr
-		},
-		{
-		    .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-		    .pNext = nullptr,
-		    .flags = 0,
-		    .stage = VK_SHADER_STAGE_COMPUTE_BIT,
-		    .module = etc2ShaderModule,
-		    .pName = "main",
-		    .pSpecializationInfo = nullptr
-		},
-		{
-		    .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-		    .pNext = nullptr,
-		    .flags = 0,
-		    .stage = VK_SHADER_STAGE_COMPUTE_BIT,
-		    .module = astcShaderModule,
-		    .pName = "main",
-		    .pSpecializationInfo = nullptr
-		},
-		{
-		    .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-		    .pNext = nullptr,
-		    .flags = 0,
-		    .stage = VK_SHADER_STAGE_COMPUTE_BIT,
-		    .module = watermarkShaderModule,
-		    .pName = "main",
-		    .pSpecializationInfo = nullptr
-		},
+		SHADER_STAGE_CREATE_INFO(s3tc),
+		SHADER_STAGE_CREATE_INFO(rgtc),
+		SHADER_STAGE_CREATE_INFO(bc6),
+		SHADER_STAGE_CREATE_INFO(bc7),
+		SHADER_STAGE_CREATE_INFO(etc2_encode),
+		SHADER_STAGE_CREATE_INFO(astc_encoder),
+		SHADER_STAGE_CREATE_INFO(astc_encoder_debug),
+		SHADER_STAGE_CREATE_INFO(analyze_astc_parameters),
+		SHADER_STAGE_CREATE_INFO(watermark),
 	};
 
-	VkDescriptorSetLayoutBinding bindings[] = {
+	VkDescriptorSetLayoutBinding bcn_bindings[] = {
 		{
 			.binding = 0,
 			.descriptorType = (dev->use_image_view) ? VK_DESCRIPTOR_TYPE_STORAGE_IMAGE : VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
 			.descriptorCount = 1,
 			.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
-			.pImmutableSamplers = nullptr
 		},
 		{
 			.binding = 1,
 			.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
 			.descriptorCount = 1,
 			.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
-			.pImmutableSamplers = nullptr
-		}
+		},
 	};
 
-	VkDescriptorSetLayoutCreateInfo descriptor_set_create_info = {
+	VkDescriptorSetLayoutCreateInfo bcn_descriptor_set_create_info = {
 		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
 		.pNext = nullptr,
 		.flags = 0,
 		.bindingCount = 2,
-		.pBindings = bindings
+		.pBindings = bcn_bindings,
 	};
 
 	result = table.CreateDescriptorSetLayout(device,
-		&descriptor_set_create_info, NULL, &dev->setLayout);
+		&bcn_descriptor_set_create_info, NULL, &dev->setLayout);
 
 	if (result != VK_SUCCESS) {
 		Logger::log("error", "Failed to create descriptor set layout, res %d", result);
@@ -389,7 +310,7 @@ create_bcn_compute_pipelines(struct device *dev)
 			.descriptorCount = 1,
 			.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
 			.pImmutableSamplers = nullptr
-		}
+		},
 	};
 
 	VkDescriptorSetLayoutCreateInfo etc2_descriptor_set_create_info = {
@@ -397,7 +318,7 @@ create_bcn_compute_pipelines(struct device *dev)
 		.pNext = nullptr,
 		.flags = 0,
 		.bindingCount = 2,
-		.pBindings = bindings
+		.pBindings = etc2_bindings,
 	};
 
 	result = table.CreateDescriptorSetLayout(device,
@@ -410,37 +331,72 @@ create_bcn_compute_pipelines(struct device *dev)
 
 	VkDescriptorSetLayoutBinding astc_bindings[] = {
         {
-            .binding = 0,
+            .binding = 0, // input_rgba8_buffer
             .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
             .descriptorCount = 1,
             .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT
         },
         {
-            .binding = 1,
+            .binding = 1, // astc_blocks
             .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
             .descriptorCount = 1,
             .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT
         },
         {
-            .binding = 2,
+            .binding = 2, // lut2
             .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
             .descriptorCount = 1,
             .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT
         },
         {
-            .binding = 3,
+            .binding = 3, // astc_2p_lut_s2
             .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
             .descriptorCount = 1,
             .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT
-        }
+        },
+        {
+            .binding = 5, // debug
+            .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+            .descriptorCount = 1,
+            .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT
+        },
+        {
+            .binding = 6, // analysis_output
+            .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+            .descriptorCount = 1,
+            .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT
+        },
     };
 
     VkDescriptorSetLayoutCreateInfo astc_layout_desc = {
         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
         .bindingCount = 4,
-        .pBindings = astc_bindings
+        .pBindings = astc_bindings,
     };
     table.CreateDescriptorSetLayout(device, &astc_layout_desc, nullptr, &dev->astcSetLayout);
+
+    VkDescriptorSetLayoutCreateInfo astc_debug_layout_desc = {
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+        .bindingCount = 6,
+        .pBindings = astc_bindings,
+    };
+    table.CreateDescriptorSetLayout(device, &astc_debug_layout_desc, nullptr, &dev->astcDebugSetLayout);
+
+	VkDescriptorSetLayoutCreateInfo analyze_astc_descriptor_set_create_info = {
+		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+		.pNext = nullptr,
+		.flags = 0,
+		.bindingCount = 6,
+		.pBindings = astc_bindings,
+	};
+
+	result = table.CreateDescriptorSetLayout(device,
+		&analyze_astc_descriptor_set_create_info, NULL, &dev->analyzeAstcSetLayout);
+
+	if (result != VK_SUCCESS) {
+		Logger::log("error", "Failed to create descriptor set analyzeAstcSetLayout, res %d", result);
+		return result;
+	}
 
 	VkPushConstantRange push_constant = {
 		.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
@@ -505,76 +461,49 @@ create_bcn_compute_pipelines(struct device *dev)
     };
     table.CreatePipelineLayout(device, &astc_pipeline_layout_info, nullptr, &dev->astcLayout);
 
-	VkComputePipelineCreateInfo pipeline_create_info[] = {
-	    {
-			.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
-			.pNext = nullptr,
-			.flags = 0,
-			.stage = shader_stage_infos[0],
-			.layout = dev->layout,
-			.basePipelineHandle = VK_NULL_HANDLE,
-			.basePipelineIndex = -1
-		},
-		{
-			.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
-			.pNext = nullptr,
-			.flags = 0,
-			.stage = shader_stage_infos[1],
-			.layout = dev->layout,
-			.basePipelineHandle = VK_NULL_HANDLE,
-			.basePipelineIndex = -1
-		},
-		{
-		    .sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
-		    .pNext = nullptr,
-		    .flags = 0,
-		    .stage = shader_stage_infos[2],
-		    .layout = dev->layout,
-		    .basePipelineHandle = VK_NULL_HANDLE,
-		    .basePipelineIndex = -1
-		},
-		{
-		    .sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
-		    .pNext = nullptr,
-		    .flags = 0,
-		    .stage = shader_stage_infos[3],
-		    .layout = dev->layout,
-		    .basePipelineHandle = VK_NULL_HANDLE,
-		    .basePipelineIndex = -1
-		},
-		{
-		    .sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
-		    .pNext = nullptr,
-		    .flags = 0,
-		    .stage = shader_stage_infos[4],
-		    .layout = dev->etc2Layout,
-		    .basePipelineHandle = VK_NULL_HANDLE,
-		    .basePipelineIndex = -1
-		},
-		{
-		    .sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
-		    .pNext = nullptr,
-		    .flags = 0,
-		    .stage = shader_stage_infos[5],
-		    .layout = dev->astcLayout,
-		    .basePipelineHandle = VK_NULL_HANDLE,
-		    .basePipelineIndex = -1
-		},
-		{
-		    .sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
-		    .pNext = nullptr,
-		    .flags = 0,
-		    .stage = shader_stage_infos[6],
-		    .layout = dev->etc2Layout, // TODO(leegao): same layout for now
-		    .basePipelineHandle = VK_NULL_HANDLE,
-		    .basePipelineIndex = -1
+    VkPipelineLayoutCreateInfo astc_debug_pipeline_layout_info = {
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+        .setLayoutCount = 1,
+        .pSetLayouts = &dev->astcDebugSetLayout,
+        .pushConstantRangeCount = 1,
+        .pPushConstantRanges = &astc_push
+    };
+    table.CreatePipelineLayout(device, &astc_debug_pipeline_layout_info, nullptr, &dev->astcDebugLayout);
+
+    VkPipelineLayoutCreateInfo analyze_astc_pipeline_layout_info = {
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+        .setLayoutCount = 1,
+        .pSetLayouts = &dev->analyzeAstcSetLayout,
+        .pushConstantRangeCount = 1,
+        .pPushConstantRanges = &astc_push
+    };
+    table.CreatePipelineLayout(device, &analyze_astc_pipeline_layout_info, nullptr, &dev->analyzeAstcLayout);
+
+    #define PIPELINE_CREATE_INFO(name, i, l) \
+		{ \
+			.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO, \
+			.pNext = nullptr, \
+			.flags = 0, \
+			.stage = shader_stage_infos[i], \
+			.layout = l, \
+			.basePipelineHandle = VK_NULL_HANDLE, \
+			.basePipelineIndex = -1 \
 		}
+	VkComputePipelineCreateInfo pipeline_create_info[] = {
+	    PIPELINE_CREATE_INFO(s3tc, 0, dev->layout),
+	    PIPELINE_CREATE_INFO(rgtc, 1, dev->layout),
+	    PIPELINE_CREATE_INFO(bc6, 2, dev->layout),
+	    PIPELINE_CREATE_INFO(bc7, 3, dev->layout),
+	    PIPELINE_CREATE_INFO(etc2_encode, 4, dev->etc2Layout),
+	    PIPELINE_CREATE_INFO(astc_encoder, 5, dev->astcLayout),
+	    PIPELINE_CREATE_INFO(astc_encoder_debug, 6, dev->astcDebugLayout),
+	    PIPELINE_CREATE_INFO(analyze_astc_parameters, 7, dev->analyzeAstcLayout),
+	    PIPELINE_CREATE_INFO(watermark, 8, dev->etc2Layout), // reuse etc2Layout
 	};
 
-	VkPipeline pipelines[7];
-
+	VkPipeline pipelines[9];
 	result = table.CreateComputePipelines(device,
-		VK_NULL_HANDLE, 7, pipeline_create_info, NULL, pipelines);
+		VK_NULL_HANDLE, sizeof(pipeline_create_info) / sizeof(VkComputePipelineCreateInfo), pipeline_create_info, NULL, pipelines);
 
 	if (result != VK_SUCCESS) {
 		Logger::log("error", "Failed to create compute pipeline, res %d", result);
@@ -587,15 +516,19 @@ create_bcn_compute_pipelines(struct device *dev)
 	dev->bc7Pipeline = pipelines[3];
 	dev->etc2Pipeline = pipelines[4];
 	dev->astcPipeline = pipelines[5];
-	dev->watermarkPipeline = pipelines[6];
+	dev->astcDebugPipeline = pipelines[6];
+	dev->analyzeAstcDebugPipeline = pipelines[7];
+	dev->watermarkPipeline = pipelines[8];
 
-	table.DestroyShaderModule(device, s3tcShaderModule, nullptr);
-	table.DestroyShaderModule(device, bc6ShaderModule, nullptr);
-	table.DestroyShaderModule(device, bc7ShaderModule, nullptr);
-	table.DestroyShaderModule(device, rgtcShaderModule, nullptr);
-	table.DestroyShaderModule(device, etc2ShaderModule, nullptr);
-	table.DestroyShaderModule(device, astcShaderModule, nullptr);
-	table.DestroyShaderModule(device, watermarkShaderModule, nullptr);
+	table.DestroyShaderModule(device, s3tc_shader_module, nullptr);
+	table.DestroyShaderModule(device, bc6_shader_module, nullptr);
+	table.DestroyShaderModule(device, bc7_shader_module, nullptr);
+	table.DestroyShaderModule(device, rgtc_shader_module, nullptr);
+	table.DestroyShaderModule(device, etc2_encode_shader_module, nullptr);
+	table.DestroyShaderModule(device, astc_encoder_shader_module, nullptr);
+	table.DestroyShaderModule(device, astc_encoder_debug_shader_module, nullptr);
+	table.DestroyShaderModule(device, analyze_astc_parameters_shader_module, nullptr);
+	table.DestroyShaderModule(device, watermark_shader_module, nullptr);
 
 	if (dev->transcode_to_astc) {
 		dev->lut2Buffer = create_staging_buffer(dev, lut2_bin_len * sizeof(uint32_t), VK_FORMAT_UNDEFINED, 0, 0);
@@ -763,7 +696,8 @@ encode_astc_compute(struct device *dev,
 
 	VkDescriptorPool pool;
 	VkDescriptorSet descriptorSet;
-	result = dev->descriptorSetAllocator->allocate(dev->astcSetLayout, &pool, &descriptorSet);
+	auto astcSetLayout = dev->debug_astc ? dev->astcDebugSetLayout : dev->astcSetLayout;
+	result = dev->descriptorSetAllocator->allocate(astcSetLayout, &pool, &descriptorSet);
 	if (result != VK_SUCCESS) {
 	    Logger::log("error", "Failed to allocate descriptor set: %d", result);
 		return result;
@@ -794,7 +728,19 @@ encode_astc_compute(struct device *dev,
 		.range = VK_WHOLE_SIZE
 	};
 
-	VkWriteDescriptorSet desc_writes[4];
+	VkDescriptorBufferInfo debug_info = {
+		.buffer = VK_NULL_HANDLE,
+		.offset = 0,
+		.range = VK_WHOLE_SIZE
+	};
+
+	VkDescriptorBufferInfo analysis_output_info = {
+		.buffer = VK_NULL_HANDLE,
+		.offset = 0,
+		.range = VK_WHOLE_SIZE
+	};
+
+	VkWriteDescriptorSet desc_writes[6];
 	desc_writes[0] = VkWriteDescriptorSet {
 	    .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
 	    .dstSet = descriptorSet,
@@ -827,8 +773,39 @@ encode_astc_compute(struct device *dev,
 	    .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
 	    .pBufferInfo = &astc_2p_lut_info,
 	};
+	desc_writes[4] = VkWriteDescriptorSet {
+	    .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+	    .dstSet = descriptorSet,
+	    .dstBinding = 5,
+	    .descriptorCount = 1,
+	    .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+	    .pBufferInfo = &debug_info,
+	};
+	desc_writes[5] = VkWriteDescriptorSet {
+	    .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+	    .dstSet = descriptorSet,
+	    .dstBinding = 6,
+	    .descriptorCount = 1,
+	    .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+	    .pBufferInfo = &analysis_output_info,
+	};
 
-	table.UpdateDescriptorSets(device, 4, desc_writes, 0, NULL);
+	int boundDescriptors = 4;
+	if (dev->debug_astc) {
+	    auto debugBuffer = create_staging_buffer(dev, sizeof(struct AstcDebug) * width * height,
+					VK_FORMAT_UNDEFINED, width, height, "debug");
+	    debug_info.buffer = debugBuffer->handle;
+		cb->currentStagingResources->AddStagingBuffer(std::move(debugBuffer));
+
+		auto analysisOutputBuffer = create_staging_buffer(dev, sizeof(struct AstcAnalysis),
+		            VK_FORMAT_UNDEFINED, 1, 1, "analysis_output");
+		analysis_output_info.buffer = analysisOutputBuffer->handle;
+		cb->currentStagingResources->AddStagingBuffer(std::move(analysisOutputBuffer));
+
+		boundDescriptors = 6;
+	}
+	table.UpdateDescriptorSets(device, boundDescriptors, desc_writes, 0, NULL);
+
 	VkBufferMemoryBarrier bufferBarrier = {
         .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
         .srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT,
@@ -849,17 +826,47 @@ encode_astc_compute(struct device *dev,
         0, NULL
     );
 
-	table.CmdBindPipeline(commandbuffer, VK_PIPELINE_BIND_POINT_COMPUTE, dev->astcPipeline);
+    auto astcPipeline = dev->debug_astc ? dev->astcDebugPipeline : dev->astcPipeline;
+    auto astcLayout = dev->debug_astc ? dev->astcDebugLayout : dev->astcLayout;
+    table.CmdBindPipeline(commandbuffer, VK_PIPELINE_BIND_POINT_COMPUTE, astcPipeline);
 	table.CmdPushConstants(commandbuffer,
-		dev->astcLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0,
+		astcLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0,
 		sizeof(constants), &constants);
 	table.CmdBindDescriptorSets(commandbuffer,
-		VK_PIPELINE_BIND_POINT_COMPUTE, dev->astcLayout, 0, 1,
+		VK_PIPELINE_BIND_POINT_COMPUTE, astcLayout, 0, 1,
 		&descriptorSet, 0, nullptr);
 
     {
         auto scopedTimestampQuery = cb->currentStagingResources->MakeScopedTimestampQuery(
             cb, "encode_astc", format, width * height,
+            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+        table.CmdDispatch(commandbuffer, (width + 7) / 8, (height + 7) / 8, 1);
+    }
+
+    if (dev->debug_astc) {
+       	VkBufferMemoryBarrier debugBufferBarrier = {
+            .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
+            .srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT,
+            .dstAccessMask = VK_ACCESS_SHADER_READ_BIT,
+            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .buffer = debug_info.buffer,
+            .offset = 0,
+            .size = VK_WHOLE_SIZE
+        };
+
+        table.CmdPipelineBarrier(
+            commandbuffer,
+            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+            0,
+            0, NULL,
+            1, &debugBufferBarrier,
+            0, NULL
+        );
+        table.CmdBindPipeline(commandbuffer, VK_PIPELINE_BIND_POINT_COMPUTE, dev->analyzeAstcDebugPipeline);
+
+        auto scopedTimestampQuery = cb->currentStagingResources->MakeScopedTimestampQuery(
+            cb, "analyze_astc", format, width * height * sizeof(AstcDebug) / 16,
             VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
         table.CmdDispatch(commandbuffer, (width + 7) / 8, (height + 7) / 8, 1);
     }
