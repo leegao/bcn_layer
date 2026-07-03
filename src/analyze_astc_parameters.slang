@@ -17,6 +17,66 @@ int quantize(uint value, uint range) {
   return (quantized * 255 + (range / 2)) / range;
 }
 
+int quantize_error(uint value, uint range) {
+  return quantize(value, range) - value;
+}
+
+uint64_t quantization_error_exact(uint8_t4 ep0, uint8_t4 ep1,
+                                  uint8_t weights[16], uint range_color,
+                                  uint range_weight) {
+  // this is approximately:
+  // (ep1[c] - ep0[c]) * err(w[i]) + lerp(err(ep0[c], ep1[c], w[i])) + O(err^2)
+  uint64_t error = 0;
+  for (int i = 0; i < 16; i++) {
+    for (int c = 0; c < 3; c++) {
+      var exact = lerp(ep0[c], ep1[c], float(weights[i]) / 255.0f);
+      var c0 = quantize(int(ep0[c]), range_color);
+      var c1 = quantize(int(ep1[c]), range_color);
+      var w = float(quantize(weights[i], range_weight)) / 255.0f;
+      var reconstruction = lerp(c0, c1, w);
+      var component_error = exact - reconstruction;
+      error += uint(round(component_error * component_error));
+    }
+  }
+  return error;
+}
+
+uint64_t quantization_error_approx1(uint8_t4 ep0, uint8_t4 ep1,
+                                    uint8_t weights[16], uint range_color,
+                                    uint range_weight) {
+  // this is approximately:
+  // (ep1[c] - ep0[c]) * err(w[i]) + lerp(err(ep0[c], ep1[c], w[i])) + O(err^2)
+  uint64_t error = 0;
+  for (int i = 0; i < 16; i++) {
+    for (int c = 0; c < 3; c++) {
+      var diff = float(int(ep1[c]) - int(ep0[c])) / 255.0f;
+      var err_w = quantize_error(weights[i], range_weight) / 255.0f;
+      var err_c0 = quantize_error(int(ep0[c]), range_color) / 255.0f;
+      var err_c1 = quantize_error(int(ep1[c]), range_color) / 255.0f;
+      var component_error =
+          diff * err_w + lerp(err_c0, err_c1, float(weights[i]) / 255.0f);
+      error += uint(round(component_error * component_error * 65025));
+    }
+  }
+  return error;
+}
+
+uint64_t quantization_error_approx2(uint s0, uint s1, uint s2, uint err_w,
+                                    uint err_c) {
+  // this is approximately:
+  //   s0 * err_w^2 + 2 * (s2 - s1) * err_c^2 + err_c^2
+  // \approx s0 * err_w^2 + err_c^2
+  float s0_ = float(s0) / 3 / 65025.0f;
+  // float s1_ = float(s1) / 16 / 255.0f;
+  // float s2_ = float(s2) / 16 / 65025.0f;
+  float err_w_ = float(err_w) / 16 / 65025.0f;
+  float err_c_ =
+      float(err_c) / 6 / 65025.0f; // this drops to 0 for color range 0 .. 255,
+                                   // but otherwise dominates
+  var error = s0_ * err_w_ + err_c_; //  + 2 * (s2_ - s1_) * err_c_;
+  return uint(round(error * 65025 * 48));
+}
+
 [shader("compute")]
 [numthreads(8, 8, 1)]
 void main(uint3 gl_GroupThreadID: SV_GroupThreadID,
@@ -67,38 +127,59 @@ void main(uint3 gl_GroupThreadID: SV_GroupThreadID,
     quantized_color_errors_191 += q_c191 * q_c191;
   }
 
-  AstcAnalysis accumulator = {};
+  var quantized_pixel_error_191_15_exact =
+      quantization_error_exact(ep0, ep1, weights, 191, 15);
+  var quantized_pixel_error_47_15_exact =
+      quantization_error_exact(ep0, ep1, weights, 47, 15);
+  var quantized_pixel_error_255_7_exact =
+      quantization_error_exact(ep0, ep1, weights, 255, 7);
+  var quantized_pixel_error_255_3_exact =
+      quantization_error_exact(ep0, ep1, weights, 255, 3);
 
-  if (/*sum_weights < 10 || sum_color_spread_squared < 384*/ false) {
-    // shared_accumulator[thread_id] = {};
-  } else {
-    accumulator = {
-      1,
-      (uint64_t)sum_color_spread_squared,
-      (uint64_t)sum_weights,
-      (uint64_t)sum_weights_squared,
-      (uint64_t)quantized_weight_errors_3,
-      (uint64_t)quantized_weight_errors_7,
-      (uint64_t)quantized_weight_errors_15,
-      (uint64_t)quantized_color_errors_47,
-      (uint64_t)quantized_color_errors_191,
-    };
-  }
+  var quantized_pixel_error_191_15_approx = quantization_error_approx2(
+      sum_color_spread_squared, sum_weights, sum_weights_squared,
+      quantized_weight_errors_15, quantized_color_errors_191);
+  var quantized_pixel_error_47_15_approx = quantization_error_approx2(
+      sum_color_spread_squared, sum_weights, sum_weights_squared,
+      quantized_weight_errors_15, quantized_color_errors_47);
+  var quantized_pixel_error_255_7_approx = quantization_error_approx2(
+      sum_color_spread_squared, sum_weights, sum_weights_squared,
+      quantized_weight_errors_7, 0);
+  var quantized_pixel_error_255_3_approx = quantization_error_approx2(
+      sum_color_spread_squared, sum_weights, sum_weights_squared,
+      quantized_weight_errors_3, 0);
 
-  InterlockedAdd(analysis_output[0].count, accumulator.count);
+  InterlockedAdd(analysis_output[0].count, 1);
   InterlockedAdd(analysis_output[0].sum_color_spread_squared,
-                 accumulator.sum_color_spread_squared);
-  InterlockedAdd(analysis_output[0].sum_weights, accumulator.sum_weights);
-  InterlockedAdd(analysis_output[0].sum_weights_squared,
-                 accumulator.sum_weights_squared);
+                 sum_color_spread_squared);
+  InterlockedAdd(analysis_output[0].sum_weights, sum_weights);
+  InterlockedAdd(analysis_output[0].sum_weights_squared, sum_weights_squared);
   InterlockedAdd(analysis_output[0].quantized_weight_errors_3,
-                 accumulator.quantized_weight_errors_3);
+                 quantized_weight_errors_3);
   InterlockedAdd(analysis_output[0].quantized_weight_errors_7,
-                 accumulator.quantized_weight_errors_7);
+                 quantized_weight_errors_7);
   InterlockedAdd(analysis_output[0].quantized_weight_errors_15,
-                 accumulator.quantized_weight_errors_15);
+                 quantized_weight_errors_15);
   InterlockedAdd(analysis_output[0].quantized_color_errors_47,
-                 accumulator.quantized_color_errors_47);
+                 quantized_color_errors_47);
   InterlockedAdd(analysis_output[0].quantized_color_errors_191,
-                 accumulator.quantized_color_errors_191);
+                 quantized_color_errors_191);
+
+  InterlockedAdd(analysis_output[0].quantized_pixel_error_191_15_exact,
+                 quantized_pixel_error_191_15_exact);
+  InterlockedAdd(analysis_output[0].quantized_pixel_error_47_15_exact,
+                 quantized_pixel_error_47_15_exact);
+  InterlockedAdd(analysis_output[0].quantized_pixel_error_255_7_exact,
+                 quantized_pixel_error_255_7_exact);
+  InterlockedAdd(analysis_output[0].quantized_pixel_error_255_3_exact,
+                 quantized_pixel_error_255_3_exact);
+
+  InterlockedAdd(analysis_output[0].quantized_pixel_error_191_15_approx,
+                 quantized_pixel_error_191_15_approx);
+  InterlockedAdd(analysis_output[0].quantized_pixel_error_47_15_approx,
+                 quantized_pixel_error_47_15_approx);
+  InterlockedAdd(analysis_output[0].quantized_pixel_error_255_7_approx,
+                 quantized_pixel_error_255_7_approx);
+  InterlockedAdd(analysis_output[0].quantized_pixel_error_255_3_approx,
+                 quantized_pixel_error_255_3_approx);
 }

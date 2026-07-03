@@ -29,5 +29,12 @@ struct STRUCT_ALIGN(16) AstcAnalysis {
     uint64_t quantized_weight_errors_15;
     uint64_t quantized_color_errors_47;
     uint64_t quantized_color_errors_191;
-    uint64_t quantized_color_errors_255;
+    uint64_t quantized_pixel_error_191_15_exact;
+    uint64_t quantized_pixel_error_47_15_exact;
+    uint64_t quantized_pixel_error_255_7_exact;
+    uint64_t quantized_pixel_error_255_3_exact;
+    uint64_t quantized_pixel_error_191_15_approx;
+    uint64_t quantized_pixel_error_47_15_approx;
+    uint64_t quantized_pixel_error_255_7_approx;
+    uint64_t quantized_pixel_error_255_3_approx;
 };
