@@ -149,6 +149,19 @@ void main(uint3 gl_GroupThreadID: SV_GroupThreadID,
       sum_color_spread_squared, sum_weights, sum_weights_squared,
       quantized_weight_errors_3, 0);
 
+  // refining weight precision
+  uint quantized_weight_errors_refined_3 = 0;
+  uint quantized_weight_errors_refined_7 = 0;
+  uint quantized_weight_errors_refined_15 = 0;
+  for (uint i = 0; i < 16; i++) {
+    if (weights[i] <= 2 || weights[i] >= 253)
+      continue;
+    var q_w3 = 602;
+    quantized_weight_errors_refined_3 += 602; // 255^2 /(12 * 3^2)
+    quantized_weight_errors_refined_7 += 111; // 255^2 /(12 * 7^2)
+    quantized_weight_errors_refined_15 += 24; // 255^2 /(12 * 15^2)
+  }
+
   InterlockedAdd(analysis_output[0].count, 1);
   InterlockedAdd(analysis_output[0].sum_color_spread_squared,
                  sum_color_spread_squared);
@@ -182,4 +195,10 @@ void main(uint3 gl_GroupThreadID: SV_GroupThreadID,
                  quantized_pixel_error_255_7_approx);
   InterlockedAdd(analysis_output[0].quantized_pixel_error_255_3_approx,
                  quantized_pixel_error_255_3_approx);
+  InterlockedAdd(analysis_output[0].quantized_weight_errors_refined_3,
+                 quantized_weight_errors_refined_3);
+  InterlockedAdd(analysis_output[0].quantized_weight_errors_refined_7,
+                 quantized_weight_errors_refined_7);
+  InterlockedAdd(analysis_output[0].quantized_weight_errors_refined_15,
+                 quantized_weight_errors_refined_15);
 }

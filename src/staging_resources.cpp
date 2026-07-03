@@ -288,6 +288,10 @@ void StagingResources::Cleanup() {
     uint64_t total_quantized_pixel_error_255_7_approx = 0;
     uint64_t total_quantized_pixel_error_255_3_approx = 0;
 
+    uint64_t total_quantized_weight_errors_refined_3 = 0;
+    uint64_t total_quantized_weight_errors_refined_7 = 0;
+    uint64_t total_quantized_weight_errors_refined_15 = 0;
+
     for (auto it = stagingBuffers.begin(); it != stagingBuffers.end();) {
         auto buf = std::move(*it);
         it = stagingBuffers.erase(it);
@@ -350,11 +354,14 @@ void StagingResources::Cleanup() {
             total_quantized_color_errors_47 += debugData->quantized_color_errors_47;
             total_quantized_color_errors_191 += debugData->quantized_color_errors_191;
 
+            total_quantized_weight_errors_refined_3 += debugData->quantized_weight_errors_refined_3;
+            total_quantized_weight_errors_refined_7 += debugData->quantized_weight_errors_refined_7;
+            total_quantized_weight_errors_refined_15 += debugData->quantized_weight_errors_refined_15;
+
             total_quantized_pixel_error_191_15_exact += debugData->quantized_pixel_error_191_15_exact;
             total_quantized_pixel_error_47_15_exact += debugData->quantized_pixel_error_47_15_exact;
             total_quantized_pixel_error_255_7_exact += debugData->quantized_pixel_error_255_7_exact;
             total_quantized_pixel_error_255_3_exact += debugData->quantized_pixel_error_255_3_exact;
-
 
             total_quantized_pixel_error_191_15_approx += debugData->quantized_pixel_error_191_15_approx;
             total_quantized_pixel_error_47_15_approx += debugData->quantized_pixel_error_47_15_approx;
@@ -374,9 +381,18 @@ void StagingResources::Cleanup() {
         Logger::log("info", "     + mean_weights_squared: %lf", (double) total_weights_squared / 16 / 65025 / count);
         Logger::log("info", "     + mean_weights: %lf", (double) total_weights / 16 / 255 / count);
 
-        Logger::log("info", "     + mean_quantized_weight_errors__3: %.15f vs expected: %.15f", (double) total_quantized_weight_errors_3 / 16 / 65025 / count, 1/(12.0 * 3 * 3));
-        Logger::log("info", "     + mean_quantized_weight_errors__7: %.15f vs expected: %.15f", (double) total_quantized_weight_errors_7 / 16 / 65025 / count, 1/(12.0 * 7 * 7));
-        Logger::log("info", "     + mean_quantized_weight_errors_15: %.15f vs expected: %.15f", (double) total_quantized_weight_errors_15 / 16 / 65025 / count, 1/(12.0 * 15 * 15));
+        Logger::log("info", "     + mean_quantized_weight_errors__3: %.15f vs expected: %.15f or %.15f",
+            (double) total_quantized_weight_errors_3 / 16 / 65025 / count,
+            (double) total_quantized_weight_errors_refined_3 / 16 / 65025 / count,
+            1/(12.0 * 3 * 3));
+        Logger::log("info", "     + mean_quantized_weight_errors__7: %.15f vs expected: %.15f or %.15f",
+            (double) total_quantized_weight_errors_7 / 16 / 65025 / count,
+            (double) total_quantized_weight_errors_refined_7 / 16 / 65025 / count,
+            1/(12.0 * 7 * 7));
+        Logger::log("info", "     + mean_quantized_weight_errors_15: %.15f vs expected: %.15f or %.15f",
+            (double) total_quantized_weight_errors_15 / 16 / 65025 / count,
+            (double) total_quantized_weight_errors_refined_15 / 16 / 65025 / count,
+            1/(12.0 * 15 * 15));
 
         Logger::log("info", "     + mean_quantized_color_errors__47: %.15f vs expected: %.15f", (double) total_quantized_color_errors_47 / 6 / 65025 / count, 1/(12.0 * 47 * 47));
         Logger::log("info", "     + mean_quantized_color_errors_191: %.15f vs expected: %.15f", (double) total_quantized_color_errors_191 / 6 / 65025 / count, 1/(12.0 * 191 * 191));
