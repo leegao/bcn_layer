@@ -1,0 +1,3 @@
+[submodule "third_party/libGPUCounters"]
+	path = third_party/libGPUCounters
+	url = https://github.com/ARM-software/libGPUCounters.git
