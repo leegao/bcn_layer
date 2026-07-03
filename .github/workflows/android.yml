@@ -41,15 +41,10 @@ jobs:
                   sudo unzip moc.zip -d /opt/moc
                   ls /opt/moc
 
-            # - name: Install Android NDK Minimal
-            #   run: |
-            #       curl -L https://dl.google.com/android/repository/android-ndk-r26b-linux.zip -o ndk.zip
-            #       unzip -q ndk.zip -d /opt
-            #       rm ndk.zip
-            #       echo "ANDROID_NDK_HOME=/opt/android-ndk-r26b" >> "$GITHUB_ENV"
-
             - name: Checkout source code
               uses: actions/checkout@v6
+              with:
+                  submodules: recursive
 
             - name: Configure CMake for Android ARM64
               run: |
