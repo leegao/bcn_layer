@@ -14,8 +14,6 @@ cmake -B build_arm64 \
     -DCMAKE_TOOLCHAIN_FILE="${ANDROID_NDK_HOME}/build/cmake/android.toolchain.cmake" \
     -DCMAKE_WARN_DEPRECATED=OFF \
 
-cd build_arm64
-
-make
+cmake --build build_arm64
 
 echo "build_arm64/libbcn_layer.so"

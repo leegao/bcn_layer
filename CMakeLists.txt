@@ -178,6 +178,43 @@ set_source_files_properties(src/bcn.cpp
 
 add_library(bcn_layer SHARED ${SOURCES} ${SPIRV_HEADERS})
 
+if(CMAKE_SIZEOF_VOID_P EQUAL 8
+    AND (CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64" OR CMAKE_SYSTEM_PROCESSOR MATCHES "arm64" OR ANDROID_ABI MATCHES "arm64-v8a"))
+    set(HWCPIPE_WERROR OFF CACHE BOOL "" FORCE)
+
+    add_subdirectory(third_party/libGPUCounters)
+
+    # all_gpu_counters.cpp gets stuck on -O3, so let's compile it separately at -O0
+    add_library(all_gpu_counters_obj OBJECT
+        "third_party/libGPUCounters/hwcpipe/src/hwcpipe/all_gpu_counters.cpp"
+    )
+    target_compile_options(all_gpu_counters_obj PRIVATE "-O0")
+    target_include_directories(all_gpu_counters_obj PRIVATE
+        "third_party/libGPUCounters/hwcpipe/include"
+        "third_party/libGPUCounters/hwcpipe/src"
+        "third_party/libGPUCounters/backend/device/include"
+    )
+    set_target_properties(all_gpu_counters_obj PROPERTIES POSITION_INDEPENDENT_CODE ON)
+    target_compile_definitions(all_gpu_counters_obj PRIVATE ANDROID)
+    get_target_property(HWCP_SOURCES hwcpipe SOURCES)
+    list(REMOVE_ITEM HWCP_SOURCES "src/hwcpipe/all_gpu_counters.cpp")
+    set_target_properties(hwcpipe PROPERTIES SOURCES "${HWCP_SOURCES}")
+    target_sources(hwcpipe PRIVATE $<TARGET_OBJECTS:all_gpu_counters_obj>)
+
+    # third_party/libGPUCounters/backend/device/include/device/handle.hpp:90:30: error: ‘uint32_t’ has not been declared
+    #   90 |     static handle_ptr create(uint32_t instance_number = 0);
+    #                                     ^~~~~~~~
+    if (CMAKE_CXX_COMPILER_ID MATCHES "Clang" OR CMAKE_CXX_COMPILER_ID MATCHES "GNU")
+        target_compile_options(device PRIVATE "-include" "cstdint")
+    endif()
+    target_link_libraries(bcn_layer PRIVATE
+        device
+        hwcpipe
+    )
+
+    target_compile_definitions(bcn_layer PRIVATE HAS_LIBGPUCOUNTERS=1)
+endif()
+
 set_target_properties(bcn_layer PROPERTIES
     PREFIX "lib"
     OUTPUT_NAME "${OUT_NAME}"
