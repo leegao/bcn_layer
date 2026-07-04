@@ -6,6 +6,8 @@
 #include "fence.hpp"
 #include "staging_resources.hpp"
 #include "pipeline_state.hpp"
+#include <functional>
+#include <string_view>
 
 struct command_buffer {
     VkCommandBuffer handle;
@@ -21,5 +23,11 @@ struct command_buffer {
 };
 
 struct command_buffer *get_command_buffer(VkCommandBuffer);
+
+VkResult DispatchOneShotAndSample(
+    struct device *dev,
+    std::function<void(struct command_buffer*)> record_func,
+    const std::string_view name
+);
 
 #endif

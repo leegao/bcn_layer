@@ -115,7 +115,11 @@ public:
 
     std::pair<VkSemaphore, VkFence> MakeFence();
     bool IsCompleted() const { return has_completed; }
-    bool IsEmpty() const { return stagingBuffers.empty() && stagingImageViews.empty(); }
+    bool IsEmpty() const {
+        return stagingBuffers.empty() && stagingImageViews.empty()
+            && trackedQueries.empty() && descriptorSets.empty()
+            && semaphore == VK_NULL_HANDLE && completed == VK_NULL_HANDLE;
+    }
     void WaitForCompletion();
     void Cleanup();
     void AddStagingBuffer(std::unique_ptr<struct buffer> buf) { stagingBuffers.push_back(std::move(buf)); }

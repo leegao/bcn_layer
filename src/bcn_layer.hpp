@@ -108,6 +108,7 @@ struct device {
 	VkPipelineLayout astcDebugLayout;
 	VkPipelineLayout analyzeAstcLayout;
 	VkQueue queue;
+	uint32_t queueFamilyIndex;
 	uint32_t memoryIndex;
 	int use_image_view = 0;
 	int transcode_to_etc1 = 0;
@@ -132,6 +133,7 @@ struct device {
 	std::thread finalizer_thread;
     std::atomic_bool stop_thread {false};
     std::string dump_buffers_path;
+    bool has_more_layers = false;
 };
 
 struct device *get_device(VkDevice);

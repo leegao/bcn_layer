@@ -20,6 +20,7 @@ private:
 #ifdef HAS_LIBGPUCOUNTERS
     std::mutex mtx;
     bool started = false;
+    std::unique_ptr<hwcpipe::sampler_config> config;
     std::unique_ptr<hwcpipe::sampler<>> sampler;
     int execution_engines;
 #endif

@@ -43,9 +43,9 @@ void MaliGpuProfiler::Initialize() {
         }
     }
 
-    auto config = hwcpipe::sampler_config(gpu);
+    config = std::make_unique<hwcpipe::sampler_config>(gpu);
 #define ADD_COUNTER(counter) {\
-        auto error = config.add_counter(counter); \
+        auto error = config->add_counter(counter); \
         if (error) { \
             Logger::log("error", "Counter " #counter " not supported: %s", \
                         error.message().c_str()); \
@@ -86,7 +86,7 @@ void MaliGpuProfiler::Initialize() {
     ADD_COUNTER(MaliExtBusRdOTQ3);
     ADD_COUNTER(MaliExtBusRdOTQ4);
 
-    sampler = std::make_unique<hwcpipe::sampler<>>(config);
+    sampler = std::make_unique<hwcpipe::sampler<>>(*config);
 #endif
 }
 
@@ -257,5 +257,7 @@ void MaliGpuProfiler::StopAndProcess(std::string_view shaderLabel) {
         Logger::log("info", "    Queue Load [50%% -  75%%]:    %.2f%% (%llu txs)", otq_50_75 / static_cast<double>(ext_rd_tx) * 100.0, otq_50_75);
         Logger::log("info", "    Queue Load [75%% - 100%%]:    %.2f%% (%.0f txs)", otq_75_100 / static_cast<double>(ext_rd_tx) * 100.0, otq_75_100);
     }
+
+    sampler = std::make_unique<hwcpipe::sampler<>>(*config); // Reset the sampler
 #endif
 }

@@ -596,9 +596,9 @@ BCnLayer_CreateDevice(VkPhysicalDevice physicalDevice,
 	if (layerCreateInfo == NULL) {
 		return VK_ERROR_INITIALIZATION_FAILED;
 	}
-
 	PFN_vkGetInstanceProcAddr gipa = layerCreateInfo->u.pLayerInfo->pfnNextGetInstanceProcAddr;
     PFN_vkGetDeviceProcAddr gdpa = layerCreateInfo->u.pLayerInfo->pfnNextGetDeviceProcAddr;
+    bool has_more_layers = layerCreateInfo->u.pLayerInfo->pNext != nullptr;
 	layerCreateInfo->u.pLayerInfo = layerCreateInfo->u.pLayerInfo->pNext;
 
     VkInstance instance = instanceMap[GetKey(physicalDevice)];
@@ -621,12 +621,7 @@ BCnLayer_CreateDevice(VkPhysicalDevice physicalDevice,
     auto profile_transfers = getenv("BCN_PROFILE_TRANSFERS") ? atoi(getenv("BCN_PROFILE_TRANSFERS")) : 0;
     auto add_watermark = getenv("BCN_ADD_WATERMARK") ? atoi(getenv("BCN_ADD_WATERMARK")) : 0;
     auto debug_astc = getenv("BCN_DEBUG_ASTC_DIAGNOSTICS") ? atoi(getenv("BCN_DEBUG_ASTC_DIAGNOSTICS")) : 0;
-
-#ifdef HAS_LIBGPUCOUNTERS
     auto sample_gpu_counters = getenv("BCN_SAMPLE_GPU_COUNTERS") ? atoi(getenv("BCN_SAMPLE_GPU_COUNTERS")) : 0;
-#else
-    auto sample_gpu_counters = 0;
-#endif
 
     if (transcode_to_etc2 && !featuresMap[GetKey(physicalDevice)].textureCompressionETC2) {
         Logger::log("info", "textureCompressionETC2 is not supported, disabling ETC2 transcode");
@@ -853,6 +848,7 @@ BCnLayer_CreateDevice(VkPhysicalDevice physicalDevice,
     table.DestroyBuffer = (PFN_vkDestroyBuffer)gdpa(*pDevice, "vkDestroyBuffer");
     table.AllocateCommandBuffers = (PFN_vkAllocateCommandBuffers)gdpa(*pDevice, "vkAllocateCommandBuffers");
     table.CreateCommandPool = (PFN_vkCreateCommandPool)gdpa(*pDevice, "vkCreateCommandPool");
+    table.DestroyCommandPool = (PFN_vkDestroyCommandPool)gdpa(*pDevice, "vkDestroyCommandPool");
     table.GetDeviceQueue = (PFN_vkGetDeviceQueue)gdpa(*pDevice, "vkGetDeviceQueue");
     table.CreateFence = (PFN_vkCreateFence)gdpa(*pDevice, "vkCreateFence");
     table.ResetFences = (PFN_vkResetFences)gdpa(*pDevice, "vkResetFences");
@@ -938,6 +934,7 @@ BCnLayer_CreateDevice(VkPhysicalDevice physicalDevice,
     device->table = table;
     device->memoryIndex = memoryIndex;
     device->queue = queue;
+    device->queueFamilyIndex = i;
     device->alloc = pAllocator;
     device->transcode_to_etc1 = transcode_to_etc1;
     device->transcode_to_etc2 = transcode_to_etc2;
@@ -946,6 +943,7 @@ BCnLayer_CreateDevice(VkPhysicalDevice physicalDevice,
     device->add_watermark = add_watermark;
     device->debug_astc = debug_astc;
     device->sample_gpu_counters = sample_gpu_counters;
+    device->has_more_layers = has_more_layers;
 
     if (!transcode_to_etc2 && !transcode_to_astc && !add_watermark) { // transcoding is mutually exclusive with use_image_view
         device->use_image_view = getenv("BCN_COMPUTE_IMAGE_VIEW") ? atoi(getenv("BCN_COMPUTE_IMAGE_VIEW")) : 1;

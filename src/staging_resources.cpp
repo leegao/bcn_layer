@@ -165,9 +165,7 @@ ScopedTimestampQuery StagingResources::MakeScopedTimestampQuery(
 
 void StagingResources::Cleanup() {
     if (freed) return;
-    if (completed == VK_NULL_HANDLE) return;
-    if (semaphore == VK_NULL_HANDLE) return;
-
+    if (IsEmpty()) return;
     freed = true;
 
     auto *dev = get_device(device);
@@ -185,8 +183,8 @@ void StagingResources::Cleanup() {
     if (dev->profile_transfers) {
         auto now = std::chrono::system_clock::now();
         auto timestamp = std::chrono::time_point_cast<std::chrono::milliseconds>(now).time_since_epoch().count();
-        Logger::log("info", "Cleaning up batch %d with %d buffers, draw took %d ms",
-            id, Size(), timestamp - this->timestamp);
+        Logger::log("info", "Cleaning up batch %d with %d buffers, %d descriptors, and %d tracked queries took %d ms",
+            id, stagingBuffers.size(), descriptorSets.size(), trackedQueries.size(), timestamp - this->timestamp);
     }
 
     if (dev->profile_transfers && !queryPools.empty() && !trackedQueries.empty()) {
