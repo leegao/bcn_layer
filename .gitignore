@@ -18,3 +18,8 @@ demo.sh
 game*.sh
 push.sh
 bcn.sh
+.cache/
+*.dxvk-cache
+VkLayer_*.json
+logfile/
+wine.sh
