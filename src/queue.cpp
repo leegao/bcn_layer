@@ -1,7 +1,9 @@
 #include "queue.hpp"
 #include "command_buffer.hpp"
+#include "mali_gpu_profiler.hpp"
 #include "staging_resources.hpp"
 #include <chrono>
+
 
 std::unordered_map<VkQueue, std::shared_ptr<struct queue>> queuesMap;
 
@@ -132,6 +134,7 @@ BCnLayer_QueueSubmit(VkQueue queue,
     // This must be scoped until the QueueSubmit call is made
    	std::vector<VkSubmitInfoUpdater> updaters(submitInfoCount);
     std::vector<std::pair<VkSemaphore, VkFence>> staging_fences;
+    bool has_transcode = false;
 	{
 	    scoped_lock l(global_lock);
     	q = get_queue(queue);
@@ -146,6 +149,10 @@ BCnLayer_QueueSubmit(VkQueue queue,
 
                 // Technically shouldn't be needed, but just in case some game engine forgets to reset the command buffer
                 cb->reset_compute_state();
+
+                if (!stagingResources->IsEmpty()) {
+                    has_transcode = true;
+                }
 
     			std::pair<VkSemaphore, VkFence> staging_fence = stagingResources->MakeFence();
     			if (staging_fence.first != VK_NULL_HANDLE) {
@@ -163,11 +170,20 @@ BCnLayer_QueueSubmit(VkQueue queue,
 
 	q->device->hasCleanupWork.notify_one();
 
+	if (q->device->sample_gpu_counters && has_transcode) {
+		get_mali_gpu_profiler().Start();
+	}
+
 	std::vector<VkSubmitInfo> submit_infos(updaters.begin(), updaters.end());
 	VkResult result = q->device->table.QueueSubmit(queue, submitInfoCount, submit_infos.data(), fence);
 	if (result != VK_SUCCESS) {
 	    Logger::log("error", "QueueSubmit failed: %d", result);
 	    return result;
+	}
+
+	if (q->device->sample_gpu_counters && has_transcode) {
+	    q->device->table.QueueWaitIdle(queue);
+	    get_mali_gpu_profiler().StopAndProcess("QueueSubmit");
 	}
 
 	// Submit an empty command buffer to queue the tmp sem and signal the resource completed fence

@@ -116,6 +116,7 @@ struct device {
 	int profile_transfers = 0;
 	int add_watermark = 0;
 	int debug_astc = 0;
+	int sample_gpu_counters = 0;
 	VkDescriptorSetLayout setLayout;
 	VkDescriptorSetLayout etc2SetLayout;
 	VkDescriptorSetLayout astcSetLayout;

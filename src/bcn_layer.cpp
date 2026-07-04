@@ -622,6 +622,12 @@ BCnLayer_CreateDevice(VkPhysicalDevice physicalDevice,
     auto add_watermark = getenv("BCN_ADD_WATERMARK") ? atoi(getenv("BCN_ADD_WATERMARK")) : 0;
     auto debug_astc = getenv("BCN_DEBUG_ASTC_DIAGNOSTICS") ? atoi(getenv("BCN_DEBUG_ASTC_DIAGNOSTICS")) : 0;
 
+#ifdef HAS_LIBGPUCOUNTERS
+    auto sample_gpu_counters = getenv("BCN_SAMPLE_GPU_COUNTERS") ? atoi(getenv("BCN_SAMPLE_GPU_COUNTERS")) : 0;
+#else
+    auto sample_gpu_counters = 0;
+#endif
+
     if (transcode_to_etc2 && !featuresMap[GetKey(physicalDevice)].textureCompressionETC2) {
         Logger::log("info", "textureCompressionETC2 is not supported, disabling ETC2 transcode");
         transcode_to_etc2 = false;
@@ -860,6 +866,7 @@ BCnLayer_CreateDevice(VkPhysicalDevice physicalDevice,
     table.EndCommandBuffer = (PFN_vkEndCommandBuffer)gdpa(*pDevice, "vkEndCommandBuffer");
     table.QueueSubmit = (PFN_vkQueueSubmit)gdpa(*pDevice, "vkQueueSubmit");
     table.QueueSubmit2 = (PFN_vkQueueSubmit2)gdpa(*pDevice, "vkQueueSubmit2");
+    table.QueueWaitIdle = (PFN_vkQueueWaitIdle)gdpa(*pDevice, "vkQueueWaitIdle");
     table.FreeCommandBuffers = (PFN_vkFreeCommandBuffers)gdpa(*pDevice, "vkFreeCommandBuffers");
     table.CreateDescriptorSetLayout = (PFN_vkCreateDescriptorSetLayout)gdpa(*pDevice, "vkCreateDescriptorSetLayout");
     table.CreateShaderModule = (PFN_vkCreateShaderModule)gdpa(*pDevice, "vkCreateShaderModule");
@@ -938,6 +945,7 @@ BCnLayer_CreateDevice(VkPhysicalDevice physicalDevice,
     device->profile_transfers = profile_transfers;
     device->add_watermark = add_watermark;
     device->debug_astc = debug_astc;
+    device->sample_gpu_counters = sample_gpu_counters;
 
     if (!transcode_to_etc2 && !transcode_to_astc && !add_watermark) { // transcoding is mutually exclusive with use_image_view
         device->use_image_view = getenv("BCN_COMPUTE_IMAGE_VIEW") ? atoi(getenv("BCN_COMPUTE_IMAGE_VIEW")) : 1;
