@@ -273,6 +273,11 @@ void StagingResources::Cleanup() {
     uint64_t total_quantized_error_squared = 0;
     uint64_t total_quantized_alt_error_squared = 0;
 
+    static uint32_t global_count = 0;
+    static uint64_t global_total_error_squared = 0;
+    static uint64_t global_total_quantized_error_squared = 0;
+    static uint64_t global_total_quantized_alt_error_squared = 0;
+
     uint64_t total_color_spread_squared = 0;
     uint64_t total_weights_squared = 0;
     uint64_t total_weights = 0;
@@ -353,6 +358,11 @@ void StagingResources::Cleanup() {
             total_quantized_error_squared += debugData->sum_quantization_error_squared;
             total_quantized_alt_error_squared += debugData->sum_quantization_alt_error_squared;
 
+            global_count += debugData->count;
+            global_total_error_squared += debugData->sum_error_squared;
+            global_total_quantized_error_squared += debugData->sum_quantization_error_squared;
+            global_total_quantized_alt_error_squared += debugData->sum_quantization_alt_error_squared;
+
             total_color_spread_squared += debugData->sum_color_spread_squared;
             total_weights_squared += debugData->sum_weights_squared;
             total_weights += debugData->sum_weights;
@@ -384,13 +394,16 @@ void StagingResources::Cleanup() {
     }
 
     if (dev->debug_astc) {
-        Logger::log("info", "  Diagnostics (%d blocks)", count);
+        Logger::log("info", "  Diagnostics (%d blocks, %d total)", count, global_count);
         auto mse = (double) total_error_squared / 48 / 65025 / count;
-        Logger::log("info", "     + mean_error_squared: %lf (PSNR: %.2lf)", mse, -10.0 * std::log10(mse));
+        auto global_mse = (double) global_total_error_squared / 48 / 65025 / global_count;
+        Logger::log("info", "     + mean_error_squared: %lf (PSNR: %.2lf), running: %lf (PSNR: %.2lf)", mse, -10.0 * std::log10(mse), global_mse, -10.0 * std::log10(global_mse));
         auto quantized_mse = (double) total_quantized_error_squared / 48 / 65025 / count;
-        Logger::log("info", "     + mean_quantized_error_squared: %lf (PSNR: %.2lf)", quantized_mse, -10.0 * std::log10(quantized_mse));
+        auto global_quantized_mse = (double) global_total_quantized_error_squared / 48 / 65025 / global_count;
+        Logger::log("info", "     + mean_quantized_error_squared: %lf (PSNR: %.2lf), running: %lf (PSNR: %.2lf)", quantized_mse, -10.0 * std::log10(quantized_mse), global_quantized_mse, -10.0 * std::log10(global_quantized_mse));
         auto quantized_alt_mse = (double) total_quantized_alt_error_squared / 48 / 65025 / count;
-        Logger::log("info", "     + mean_quantized_error_squared (alt): %lf (PSNR: %.2lf)", quantized_alt_mse, -10.0 * std::log10(quantized_alt_mse));
+        auto global_quantized_alt_mse = (double) global_total_quantized_alt_error_squared / 48 / 65025 / global_count;
+        Logger::log("info", "     + mean_quantized_error_squared (alt): %lf (PSNR: %.2lf), running: %lf (PSNR: %.2lf)", quantized_alt_mse, -10.0 * std::log10(quantized_alt_mse), global_quantized_alt_mse, -10.0 * std::log10(global_quantized_alt_mse));
 
         if (dev->more_debug_astc) {
             Logger::log("info", "     + mean_color_spread_squared: %lf", (double) total_color_spread_squared / 3 / 65025 / count);
