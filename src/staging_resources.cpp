@@ -5,6 +5,8 @@
 #include "buffer.hpp"
 #include "command_buffer.hpp"
 #include "logger.hpp"
+
+#include <cmath>
 #include <cstdint>
 #include <fstream>
 #include <sstream>
@@ -267,6 +269,10 @@ void StagingResources::Cleanup() {
     }
 
     uint32_t count = 0;
+    uint64_t total_error_squared = 0;
+    uint64_t total_quantized_error_squared = 0;
+    uint64_t total_quantized_alt_error_squared = 0;
+
     uint64_t total_color_spread_squared = 0;
     uint64_t total_weights_squared = 0;
     uint64_t total_weights = 0;
@@ -343,6 +349,10 @@ void StagingResources::Cleanup() {
             AstcAnalysis* debugData = reinterpret_cast<AstcAnalysis*>(mappedData);
             // Logger::log("info", "     + %d x %d, count: %d", buf->width, buf->height, debugData->count);
             count += debugData->count;
+            total_error_squared += debugData->sum_error_squared;
+            total_quantized_error_squared += debugData->sum_quantization_error_squared;
+            total_quantized_alt_error_squared += debugData->sum_quantization_alt_error_squared;
+
             total_color_spread_squared += debugData->sum_color_spread_squared;
             total_weights_squared += debugData->sum_weights_squared;
             total_weights += debugData->sum_weights;
@@ -374,31 +384,40 @@ void StagingResources::Cleanup() {
     }
 
     if (dev->debug_astc) {
-        Logger::log("info", "     + nontrivial blocks: %d", count);
-        Logger::log("info", "     + mean_color_spread_squared: %lf", (double) total_color_spread_squared / 3 / 65025 / count);
-        Logger::log("info", "     + mean_weights_squared: %lf", (double) total_weights_squared / 16 / 65025 / count);
-        Logger::log("info", "     + mean_weights: %lf", (double) total_weights / 16 / 255 / count);
+        Logger::log("info", "  Diagnostics (%d blocks)", count);
+        auto mse = (double) total_error_squared / 48 / 65025 / count;
+        Logger::log("info", "     + mean_error_squared: %lf (PSNR: %.2lf)", mse, -10.0 * std::log10(mse));
+        auto quantized_mse = (double) total_quantized_error_squared / 48 / 65025 / count;
+        Logger::log("info", "     + mean_quantized_error_squared: %lf (PSNR: %.2lf)", quantized_mse, -10.0 * std::log10(quantized_mse));
+        auto quantized_alt_mse = (double) total_quantized_alt_error_squared / 48 / 65025 / count;
+        Logger::log("info", "     + mean_quantized_error_squared (alt): %lf (PSNR: %.2lf)", quantized_alt_mse, -10.0 * std::log10(quantized_alt_mse));
 
-        Logger::log("info", "     + mean_quantized_weight_errors__3: %.15f vs expected: %.15f or %.15f",
-            (double) total_quantized_weight_errors_3 / 16 / 65025 / count,
-            (double) total_quantized_weight_errors_refined_3 / 16 / 65025 / count,
-            1/(12.0 * 3 * 3));
-        Logger::log("info", "     + mean_quantized_weight_errors__7: %.15f vs expected: %.15f or %.15f",
-            (double) total_quantized_weight_errors_7 / 16 / 65025 / count,
-            (double) total_quantized_weight_errors_refined_7 / 16 / 65025 / count,
-            1/(12.0 * 7 * 7));
-        Logger::log("info", "     + mean_quantized_weight_errors_15: %.15f vs expected: %.15f or %.15f",
-            (double) total_quantized_weight_errors_15 / 16 / 65025 / count,
-            (double) total_quantized_weight_errors_refined_15 / 16 / 65025 / count,
-            1/(12.0 * 15 * 15));
+        if (dev->more_debug_astc) {
+            Logger::log("info", "     + mean_color_spread_squared: %lf", (double) total_color_spread_squared / 3 / 65025 / count);
+            Logger::log("info", "     + mean_weights_squared: %lf", (double) total_weights_squared / 16 / 65025 / count);
+            Logger::log("info", "     + mean_weights: %lf", (double) total_weights / 16 / 255 / count);
 
-        Logger::log("info", "     + mean_quantized_color_errors__47: %.15f vs expected: %.15f", (double) total_quantized_color_errors_47 / 6 / 65025 / count, 1/(12.0 * 47 * 47));
-        Logger::log("info", "     + mean_quantized_color_errors_191: %.15f vs expected: %.15f", (double) total_quantized_color_errors_191 / 6 / 65025 / count, 1/(12.0 * 191 * 191));
+            Logger::log("info", "     + mean_quantized_weight_errors__3: %.15f vs expected: %.15f or %.15f",
+                (double) total_quantized_weight_errors_3 / 16 / 65025 / count,
+                (double) total_quantized_weight_errors_refined_3 / 16 / 65025 / count,
+                1/(12.0 * 3 * 3));
+            Logger::log("info", "     + mean_quantized_weight_errors__7: %.15f vs expected: %.15f or %.15f",
+                (double) total_quantized_weight_errors_7 / 16 / 65025 / count,
+                (double) total_quantized_weight_errors_refined_7 / 16 / 65025 / count,
+                1/(12.0 * 7 * 7));
+            Logger::log("info", "     + mean_quantized_weight_errors_15: %.15f vs expected: %.15f or %.15f",
+                (double) total_quantized_weight_errors_15 / 16 / 65025 / count,
+                (double) total_quantized_weight_errors_refined_15 / 16 / 65025 / count,
+                1/(12.0 * 15 * 15));
 
-        Logger::log("info", "     + mean_quantized_pixel_error__47_15: %.15f vs actual: %.15f", (double) total_quantized_pixel_error_47_15_approx / 48 / 65025 / count, (double) total_quantized_pixel_error_47_15_exact / 48 / 65025 / count);
-        Logger::log("info", "     + mean_quantized_pixel_error_191_15: %.15f vs actual: %.15f", (double) total_quantized_pixel_error_191_15_approx / 48 / 65025 / count, (double) total_quantized_pixel_error_191_15_exact / 48 / 65025 / count);
-        Logger::log("info", "     + mean_quantized_pixel_error_255__7: %.15f vs actual: %.15f", (double) total_quantized_pixel_error_255_7_approx / 48 / 65025 / count, (double) total_quantized_pixel_error_255_7_exact / 48 / 65025 / count);
-        Logger::log("info", "     + mean_quantized_pixel_error_255__3: %.15f vs actual: %.15f", (double) total_quantized_pixel_error_255_3_approx / 48 / 65025 / count, (double) total_quantized_pixel_error_255_3_exact / 48 / 65025 / count);
+            Logger::log("info", "     + mean_quantized_color_errors__47: %.15f vs expected: %.15f", (double) total_quantized_color_errors_47 / 6 / 65025 / count, 1/(12.0 * 47 * 47));
+            Logger::log("info", "     + mean_quantized_color_errors_191: %.15f vs expected: %.15f", (double) total_quantized_color_errors_191 / 6 / 65025 / count, 1/(12.0 * 191 * 191));
+
+            Logger::log("info", "     + mean_quantized_pixel_error__47_15: %.15f vs actual: %.15f", (double) total_quantized_pixel_error_47_15_approx / 48 / 65025 / count, (double) total_quantized_pixel_error_47_15_exact / 48 / 65025 / count);
+            Logger::log("info", "     + mean_quantized_pixel_error_191_15: %.15f vs actual: %.15f", (double) total_quantized_pixel_error_191_15_approx / 48 / 65025 / count, (double) total_quantized_pixel_error_191_15_exact / 48 / 65025 / count);
+            Logger::log("info", "     + mean_quantized_pixel_error_255__7: %.15f vs actual: %.15f", (double) total_quantized_pixel_error_255_7_approx / 48 / 65025 / count, (double) total_quantized_pixel_error_255_7_exact / 48 / 65025 / count);
+            Logger::log("info", "     + mean_quantized_pixel_error_255__3: %.15f vs actual: %.15f", (double) total_quantized_pixel_error_255_3_approx / 48 / 65025 / count, (double) total_quantized_pixel_error_255_3_exact / 48 / 65025 / count);
+        }
     }
 
     for (auto imageView : stagingImageViews) {

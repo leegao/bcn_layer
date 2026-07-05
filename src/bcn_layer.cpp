@@ -620,7 +620,8 @@ BCnLayer_CreateDevice(VkPhysicalDevice physicalDevice,
     auto transcode_to_astc = getenv("BCN_TRANSCODE_TO_ASTC") ? atoi(getenv("BCN_TRANSCODE_TO_ASTC")) : 0;
     auto profile_transfers = getenv("BCN_PROFILE_TRANSFERS") ? atoi(getenv("BCN_PROFILE_TRANSFERS")) : 0;
     auto add_watermark = getenv("BCN_ADD_WATERMARK") ? atoi(getenv("BCN_ADD_WATERMARK")) : 0;
-    auto debug_astc = getenv("BCN_DEBUG_ASTC_DIAGNOSTICS") ? atoi(getenv("BCN_DEBUG_ASTC_DIAGNOSTICS")) : 0;
+    auto more_debug_astc = getenv("BCN_MORE_DEBUG_ASTC_DIAGNOSTICS") ? atoi(getenv("BCN_MORE_DEBUG_ASTC_DIAGNOSTICS")) : 0;
+    auto debug_astc = getenv("BCN_DEBUG_ASTC_DIAGNOSTICS") ? atoi(getenv("BCN_DEBUG_ASTC_DIAGNOSTICS")) : more_debug_astc;
     auto sample_gpu_counters = getenv("BCN_SAMPLE_GPU_COUNTERS") ? atoi(getenv("BCN_SAMPLE_GPU_COUNTERS")) : 0;
 
     if (transcode_to_etc2 && !featuresMap[GetKey(physicalDevice)].textureCompressionETC2) {
@@ -942,6 +943,7 @@ BCnLayer_CreateDevice(VkPhysicalDevice physicalDevice,
     device->profile_transfers = profile_transfers;
     device->add_watermark = add_watermark;
     device->debug_astc = debug_astc;
+    device->more_debug_astc = more_debug_astc;
     device->sample_gpu_counters = sample_gpu_counters;
     device->has_more_layers = has_more_layers;
 

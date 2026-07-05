@@ -13,14 +13,19 @@ struct STRUCT_ALIGN(16) AstcParameters {
     uint8_t ep0[4];
     uint8_t ep1[4];
     uint8_t weights[16];
+    bool use_alpha;
 };
 
 struct STRUCT_ALIGN(16) AstcDebug {
+    uint32_t sum_error_squared;
     AstcParameters params;
 };
 
 struct STRUCT_ALIGN(16) AstcAnalysis {
     uint32_t count;
+    uint64_t sum_error_squared;
+    uint64_t sum_quantization_error_squared;
+    uint64_t sum_quantization_alt_error_squared;
     uint64_t sum_color_spread_squared;
     uint64_t sum_weights;
     uint64_t sum_weights_squared;

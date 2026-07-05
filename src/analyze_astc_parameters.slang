@@ -90,6 +90,7 @@ void main(uint3 gl_GroupThreadID: SV_GroupThreadID,
   var thread_id = gl_GroupThreadID.x + gl_GroupThreadID.y * 8;
 
   var debug = get_debug(buffer_index);
+  var sum_error_squared = debug.sum_error_squared;
   var ep0 = reinterpret<uint8_t4>(debug.params.ep0);
   var ep1 = reinterpret<uint8_t4>(debug.params.ep1);
   var weights = debug.params.weights;
@@ -162,7 +163,21 @@ void main(uint3 gl_GroupThreadID: SV_GroupThreadID,
     quantized_weight_errors_refined_15 += 24; // 255^2 /(12 * 15^2)
   }
 
+  var sum_quantization_error_squared = debug.params.use_alpha
+                                           ? quantized_pixel_error_47_15_exact
+                                           : quantized_pixel_error_191_15_exact;
+
+  var sum_quantization_alt_error_squared =
+      debug.params.use_alpha ? quantized_pixel_error_255_3_exact
+                             : quantized_pixel_error_255_7_exact;
+
   InterlockedAdd(analysis_output[0].count, 1);
+  InterlockedAdd(analysis_output[0].sum_error_squared, sum_error_squared);
+  InterlockedAdd(analysis_output[0].sum_quantization_error_squared,
+                 sum_quantization_error_squared);
+  InterlockedAdd(analysis_output[0].sum_quantization_alt_error_squared,
+                 sum_quantization_alt_error_squared);
+
   InterlockedAdd(analysis_output[0].sum_color_spread_squared,
                  sum_color_spread_squared);
   InterlockedAdd(analysis_output[0].sum_weights, sum_weights);

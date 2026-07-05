@@ -233,7 +233,7 @@ void main(uint3 gl_GlobalInvocationID: SV_DispatchThreadID) {
   astc_blocks[buffer_index] = packed_1p;
 
 #ifdef ENABLE_DEBUG
-  log_debug(buffer_index, ep0, ep1, weights_1p);
+  log_debug(buffer_index, ep0, ep1, weights_1p, pixels, use_alpha);
 #endif
 
 #ifdef ENABLE_DIAGNOSTICS
