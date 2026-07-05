@@ -99,13 +99,11 @@ struct device {
 	VkPipeline bc7Pipeline;
 	VkPipeline etc2Pipeline;
 	VkPipeline astcPipeline;
-	VkPipeline astcDebugPipeline;
 	VkPipeline analyzeAstcDebugPipeline;
 	VkPipeline watermarkPipeline;
 	VkPipelineLayout layout;
 	VkPipelineLayout etc2Layout;
 	VkPipelineLayout astcLayout;
-	VkPipelineLayout astcDebugLayout;
 	VkPipelineLayout analyzeAstcLayout;
 	VkQueue queue;
 	uint32_t queueFamilyIndex;
@@ -121,7 +119,6 @@ struct device {
 	VkDescriptorSetLayout setLayout;
 	VkDescriptorSetLayout etc2SetLayout;
 	VkDescriptorSetLayout astcSetLayout;
-	VkDescriptorSetLayout astcDebugSetLayout;
 	VkDescriptorSetLayout analyzeAstcSetLayout;
 	std::unique_ptr<struct buffer> lut2Buffer;
 	std::unique_ptr<struct buffer> astc2pLutBuffer;

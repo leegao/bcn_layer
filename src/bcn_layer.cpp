@@ -955,12 +955,18 @@ BCnLayer_CreateDevice(VkPhysicalDevice physicalDevice,
         device->dump_buffers_path = "";
     }
 
+    auto now = std::chrono::system_clock::now();
+    auto start_timestamp = std::chrono::time_point_cast<std::chrono::milliseconds>(now).time_since_epoch().count();
 
     result = create_bcn_compute_pipelines(device.get());
     if (result != VK_SUCCESS) {
     	Logger::log("error", "Failed to create BCn compute pipeline, res %d", result);
         return result;
     }
+
+    now = std::chrono::system_clock::now();
+    auto end_timestamp = std::chrono::time_point_cast<std::chrono::milliseconds>(now).time_since_epoch().count();
+    Logger::log("info", "create_bcn_compute_pipelines took %d ms", end_timestamp - start_timestamp);
 
     device->syncPool = std::make_unique<SyncPool>(device->handle);
     uint32_t buffer_multiplier = 1u;
