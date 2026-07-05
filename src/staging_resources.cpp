@@ -1,6 +1,7 @@
 #include "staging_resources.hpp"
 
 #include "astc_debug.h"
+#include "bcn.hpp"
 #include "bcn_layer.hpp"
 #include "buffer.hpp"
 #include "command_buffer.hpp"
@@ -223,6 +224,7 @@ void StagingResources::Cleanup() {
             std::map<std::string, AggregatedStat> statsRollup;
             static std::map<std::string, AggregatedStat> globalStatsRollup;
             std::map<std::string, std::map<VkFormat, AggregatedStat>> formatHist;
+            static std::map<std::string, std::map<VkFormat, AggregatedStat>> globalFormatHist;
             for (const auto& q : trackedQueries) {
                 uint64_t startTicks = allPoolResults[q.poolIndex][q.startQueryId];
                 uint64_t endTicks = allPoolResults[q.poolIndex][q.endQueryId];
@@ -240,9 +242,14 @@ void StagingResources::Cleanup() {
                     globalStat.totalSizeBytes += q.textureSize;
                     globalStat.count++;
 
-                    // formatHist[q.label][q.format].totalTimeMs += durationMs;
-                    // formatHist[q.label][q.format].totalSizeBytes += q.textureSize;
-                    // formatHist[q.label][q.format].count++;
+                    if (dev->profile_more_transfers) {
+                        formatHist[q.label][q.format].totalTimeMs += durationMs;
+                        formatHist[q.label][q.format].totalSizeBytes += q.textureSize;
+                        formatHist[q.label][q.format].count++;
+                        globalFormatHist[q.label][q.format].totalTimeMs += durationMs;
+                        globalFormatHist[q.label][q.format].totalSizeBytes += q.textureSize;
+                        globalFormatHist[q.label][q.format].count++;
+                    }
                 }
             }
             for (const auto& [label, stat] : statsRollup) {
@@ -262,23 +269,26 @@ void StagingResources::Cleanup() {
                     throughput(totalSizeMb, stat.totalTimeMs),
                     timestampPeriod);
 
-                Logger::log("info", "  %22s: %-5u |  %11.2f ms |  %11.1f MB | Throughput: %6.1f MB/s",
-                    "+ total calls",
-                    globalStat.count,
-                    globalStat.totalTimeMs,
-                    globalTotalSizeMb,
-                    throughput(globalTotalSizeMb, globalStat.totalTimeMs),
-                    timestampPeriod);
-                // for (const auto [key, substat] : formatHist[label]) {
-                //     double subTotalSizeMb = static_cast<double>(substat.totalSizeBytes) / (1024.0 * 1024.0);
-                //     Logger::log("info", "     + [%s (%d)], Calls: %-4u | Time: %8.3f ms | Data: %7.1f MB | Throughput: %7.1f MB/s",
-                //         vk_format_to_string(key).c_str(),
-                //         key,
-                //         substat.count,
-                //         substat.totalTimeMs,
-                //         subTotalSizeMb,
-                //         throughput(subTotalSizeMb, substat.totalTimeMs));
-                // }
+                if (dev->profile_more_transfers) {
+                    Logger::log("info", "  %22s: %-5u |  %11.2f ms |  %11.1f MB | Throughput: %6.1f MB/s",
+                        "+ total calls",
+                        globalStat.count,
+                        globalStat.totalTimeMs,
+                        globalTotalSizeMb,
+                        throughput(globalTotalSizeMb, globalStat.totalTimeMs),
+                        timestampPeriod);
+
+                    for (const auto [key, substat] : globalFormatHist[label]) {
+                        double subTotalSizeMb = static_cast<double>(substat.totalSizeBytes) / (1024.0 * 1024.0);
+                        Logger::log("info", "            + %4s (%d): %-5u |  %11.2f ms |  %11.1f MB | Throughput: %6.1f MB/s",
+                            vk_format_to_string(key).c_str(),
+                            key,
+                            substat.count,
+                            substat.totalTimeMs,
+                            subTotalSizeMb,
+                            throughput(subTotalSizeMb, substat.totalTimeMs));
+                    }
+                }
             }
         }
     }

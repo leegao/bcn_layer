@@ -113,6 +113,7 @@ struct device {
 	int transcode_to_etc2 = 0;
 	int transcode_to_astc = 0;
 	int profile_transfers = 0;
+	int profile_more_transfers = 0;
 	int add_watermark = 0;
 	int debug_astc = 0;
 	int more_debug_astc = 0;
