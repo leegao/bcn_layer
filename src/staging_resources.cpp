@@ -221,6 +221,7 @@ void StagingResources::Cleanup() {
                 uint32_t count = 0;
             };
             std::map<std::string, AggregatedStat> statsRollup;
+            static std::map<std::string, AggregatedStat> globalStatsRollup;
             std::map<std::string, std::map<VkFormat, AggregatedStat>> formatHist;
             for (const auto& q : trackedQueries) {
                 uint64_t startTicks = allPoolResults[q.poolIndex][q.startQueryId];
@@ -234,24 +235,39 @@ void StagingResources::Cleanup() {
                     stat.totalSizeBytes += q.textureSize;
                     stat.count++;
 
+                    auto& globalStat = globalStatsRollup[q.label];
+                    globalStat.totalTimeMs += durationMs;
+                    globalStat.totalSizeBytes += q.textureSize;
+                    globalStat.count++;
+
                     // formatHist[q.label][q.format].totalTimeMs += durationMs;
                     // formatHist[q.label][q.format].totalSizeBytes += q.textureSize;
                     // formatHist[q.label][q.format].count++;
                 }
             }
             for (const auto& [label, stat] : statsRollup) {
+                auto& globalStat = globalStatsRollup[label];
                 double totalSizeMb = static_cast<double>(stat.totalSizeBytes) / (1024.0 * 1024.0);
+                double globalTotalSizeMb = static_cast<double>(globalStat.totalSizeBytes) / (1024.0 * 1024.0);
                 auto throughput = [](double sizeMb, double timeMs) -> double {
                     double timeSec = timeMs / 1000.0;
                     return (timeSec > 0.0) ? (sizeMb / timeSec) : 0.0;
                 };
 
-                Logger::log("info", "  [%14s] Calls: %-4u | Time: %6.3f ms | Data: %6.1f MB | Throughput: %6.1f MB/s (granularity: %fns)",
+                Logger::log("info", "  [%14s] Calls: %-5u | Time: %6.2f ms | Data: %6.1f MB | Throughput: %6.1f MB/s (granularity: %.1fns)",
                     label.c_str(),
                     stat.count,
                     stat.totalTimeMs,
                     totalSizeMb,
                     throughput(totalSizeMb, stat.totalTimeMs),
+                    timestampPeriod);
+
+                Logger::log("info", "  %22s: %-5u |  %11.2f ms |  %11.1f MB | Throughput: %6.1f MB/s",
+                    "+ total calls",
+                    globalStat.count,
+                    globalStat.totalTimeMs,
+                    globalTotalSizeMb,
+                    throughput(globalTotalSizeMb, globalStat.totalTimeMs),
                     timestampPeriod);
                 // for (const auto [key, substat] : formatHist[label]) {
                 //     double subTotalSizeMb = static_cast<double>(substat.totalSizeBytes) / (1024.0 * 1024.0);
@@ -264,7 +280,6 @@ void StagingResources::Cleanup() {
                 //         throughput(subTotalSizeMb, substat.totalTimeMs));
                 // }
             }
-
         }
     }
 
