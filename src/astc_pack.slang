@@ -53,10 +53,7 @@ inline uint get_integer_from_trits(uint index) {
   return (packed_trit_data[wordIndex] >> shift) & 0xFFu;
 }
 
-inline uint unscramble_quantized(uint quant_mode, uint q_val) {
-  let offset = quant_mode == 19 ? 48u : 0u;
-  let index = q_val + offset;
-
+inline uint unscramble_quantized(uint index) {
   uint wordIndex = index >> 2;
   uint shift = (index & 3) << 3;
   return (packed_unscrambler_data[wordIndex] >> shift) & 0xFFu;
@@ -81,8 +78,15 @@ void write_bits_fwd(inout uint block_x, inout uint block_y,
   bit_offset += count;
 }
 
+#ifdef TEMPLATED_ENCODE_TRITS
+void encode_trits<let bits : uint>(inout uint block_x, inout uint block_y,
+                                   inout uint bit_offset,
+                                   const PackedArray<8, 8> numbers,
+                                   uint count) {
+#else
 void encode_trits(inout uint block_x, inout uint block_y, inout uint bit_offset,
                   const PackedArray<8, 8> numbers, uint bits, uint count) {
+#endif
   for (uint i = 0; i < count; i += 5) {
     PackedArray<8, 5> group;
     group.data = {};
@@ -92,13 +96,8 @@ void encode_trits(inout uint block_x, inout uint block_y, inout uint bit_offset,
     }
     PackedArray<8, 5> m, t;
     for (uint j = 0; j < 5; ++j) {
-      if (i + j < count) {
-        m[j] = group[j] & ((1 << bits) - 1);
-        t[j] = group[j] >> bits;
-      } else {
-        m[j] = 0;
-        t[j] = 0;
-      }
+      m[j] = group[j] & ((1 << bits) - 1);
+      t[j] = group[j] >> bits;
     }
 
     var index = t[4] * 81 + t[3] * 27 + t[2] * 9 + t[1] * 3 + t[0];
@@ -143,9 +142,12 @@ uint4 pack_astc_4x4_block(const uint4 eps[2], const PackedArray<8, 16> weights,
 
   // Weights - C.2.17
   let w_max = WEIGHT_MAX_VALUES[quant_weight_mode];
+  let w_max_scaled = ((w_max << 16u) + 127u) / 255u;
   [[unroll]]
   for (uint i = 0u; i < 16u; ++i) {
-    uint q_w = uint((float(weights[i]) * float(w_max)) / 255.0f + 0.5f);
+    // uint q_w = uint((float(weights[i]) * float(w_max)) / 255.0f + 0.5f);
+    // This is equivalent to scaling everytihng up by 2^16
+    uint q_w = (uint(weights[i]) * w_max_scaled + 32768u) >> 16u;
     q_w = clamp(q_w, 0u, w_max);
     uint rev4 = reversebits(q_w) >> 28u;
     if (i < 8u) {
@@ -157,6 +159,8 @@ uint4 pack_astc_4x4_block(const uint4 eps[2], const PackedArray<8, 16> weights,
 
   // Endpoints - C.2.13
   let ep_max = use_alpha ? ENDPOINT_MAX_VALUES[13u] : ENDPOINT_MAX_VALUES[19u];
+  let ep_max_scaled = ((ep_max << 16u) + 127u) / 255u;
+  const uint unscrambler_offset = use_alpha ? 0u : 48u;
   PackedArray<8, 8> raw_endpoints;
   uint ep_idx = 0;
   // Interleave endpoints
@@ -174,13 +178,24 @@ uint4 pack_astc_4x4_block(const uint4 eps[2], const PackedArray<8, 16> weights,
   PackedArray<8, 8> quantized_endpoints;
   [[unroll]]
   for (uint i = 0; i < num_endpoints; ++i) {
-    uint q_ep = uint((float(raw_endpoints[i]) * float(ep_max)) / 255.0f + 0.5f);
+    // q_ep = uint((float(raw_endpoints[i]) * float(ep_max)) / 255.0f + 0.5f);
+    uint q_ep = (uint(raw_endpoints[i]) * ep_max_scaled + 32768u) >> 16u;
     q_ep = clamp(q_ep, 0u, ep_max);
-    quantized_endpoints[i] = unscramble_quantized(quant_ep_mode, q_ep);
+    quantized_endpoints[i] = unscramble_quantized(q_ep + unscrambler_offset);
   }
 
+#ifdef TEMPLATED_ENCODE_TRITS
+  if (use_alpha) {
+    encode_trits<4>(final_block.x, final_block.y, fwd_offset,
+                    quantized_endpoints, 8u);
+  } else {
+    encode_trits<6>(final_block.x, final_block.y, fwd_offset,
+                    quantized_endpoints, 6u);
+  }
+#else
   encode_trits(final_block.x, final_block.y, fwd_offset, quantized_endpoints,
                ep_bits, num_endpoints);
+#endif
 
   return final_block;
 }
