@@ -180,6 +180,7 @@ BCnLayer_CreateInstance(const VkInstanceCreateInfo *pCreateInfo,
     table.EnumeratePhysicalDevices = (PFN_vkEnumeratePhysicalDevices)gip(*pInstance, "vkEnumeratePhysicalDevices");
     table.GetPhysicalDeviceMemoryProperties = (PFN_vkGetPhysicalDeviceMemoryProperties)gip(*pInstance, "vkGetPhysicalDeviceMemoryProperties");
     table.GetPhysicalDeviceFormatProperties = (PFN_vkGetPhysicalDeviceFormatProperties)gip(*pInstance, "vkGetPhysicalDeviceFormatProperties");
+    table.GetPhysicalDeviceFormatProperties2 = (PFN_vkGetPhysicalDeviceFormatProperties2)gip(*pInstance, "vkGetPhysicalDeviceFormatProperties2");
     table.GetPhysicalDeviceProperties = (PFN_vkGetPhysicalDeviceProperties)gip(*pInstance, "vkGetPhysicalDeviceProperties");
     table.GetPhysicalDeviceProperties2 = (PFN_vkGetPhysicalDeviceProperties2)gip(*pInstance, "vkGetPhysicalDeviceProperties2");
     table.GetPhysicalDeviceImageFormatProperties = (PFN_vkGetPhysicalDeviceImageFormatProperties)gip(*pInstance, "vkGetPhysicalDeviceImageFormatProperties");
@@ -433,8 +434,10 @@ BCnLayer_GetPhysicalDeviceFormatProperties(VkPhysicalDevice physicalDevice,
                                           VkFormat format,
                                           VkFormatProperties* pFormatProperties)
 {
-	scoped_lock l(global_lock);
+    if (!pFormatProperties)
+        return;
 
+	scoped_lock l(global_lock);
 	instanceDispatch[GetKey(physicalDevice)].GetPhysicalDeviceFormatProperties(physicalDevice,
 		format, pFormatProperties);
 
@@ -471,6 +474,75 @@ BCnLayer_GetPhysicalDeviceFormatProperties(VkPhysicalDevice physicalDevice,
    		default:
    			break;
    }
+}
+
+VKAPI_ATTR void VKAPI_CALL
+BCnLayer_GetPhysicalDeviceFormatProperties2(VkPhysicalDevice physicalDevice,
+                                           VkFormat format,
+                                           VkFormatProperties2* pFormatProperties)
+{
+    if (!pFormatProperties)
+        return;
+
+    scoped_lock l(global_lock);
+    instanceDispatch[GetKey(physicalDevice)].GetPhysicalDeviceFormatProperties2(
+        physicalDevice, format, pFormatProperties);
+
+    VkPhysicalDeviceProperties2 props2 = propertiesMap[GetKey(physicalDevice)];
+    VkPhysicalDeviceDriverProperties driverProps = driverPropertiesMap[GetKey(physicalDevice)];
+
+    switch (format) {
+        case VK_FORMAT_BC1_RGB_UNORM_BLOCK:
+        case VK_FORMAT_BC1_RGB_SRGB_BLOCK:
+        case VK_FORMAT_BC1_RGBA_UNORM_BLOCK:
+        case VK_FORMAT_BC1_RGBA_SRGB_BLOCK:
+        case VK_FORMAT_BC2_UNORM_BLOCK:
+        case VK_FORMAT_BC2_SRGB_BLOCK:
+        case VK_FORMAT_BC3_UNORM_BLOCK:
+        case VK_FORMAT_BC3_SRGB_BLOCK:
+            if (bcn_compute_auto && driverProps.driverID == VK_DRIVER_ID_SAMSUNG_PROPRIETARY)
+                break;
+        case VK_FORMAT_BC4_UNORM_BLOCK:
+        case VK_FORMAT_BC4_SNORM_BLOCK:
+        case VK_FORMAT_BC5_UNORM_BLOCK:
+        case VK_FORMAT_BC5_SNORM_BLOCK:
+        case VK_FORMAT_BC6H_UFLOAT_BLOCK:
+        case VK_FORMAT_BC6H_SFLOAT_BLOCK:
+        case VK_FORMAT_BC7_UNORM_BLOCK:
+        case VK_FORMAT_BC7_SRGB_BLOCK:
+        {
+            if (bcn_compute_auto && ((driverProps.driverID == VK_DRIVER_ID_QUALCOMM_PROPRIETARY && props2.properties.driverVersion > VK_MAKE_VERSION(512, 530, 0)) ||
+                                     driverProps.driverID == VK_DRIVER_ID_MESA_TURNIP))
+            {
+                break;
+            }
+
+            pFormatProperties->formatProperties.optimalTilingFeatures |= VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT |
+                                                                        VK_FORMAT_FEATURE_BLIT_SRC_BIT |
+                                                                        VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT |
+                                                                        VK_FORMAT_FEATURE_TRANSFER_DST_BIT;
+            // See dxvk 2+
+            // https://github.com/doitsujin/dxvk/blob/46a183b55b29e5e62e88ddb1c798efcb1555893e/src/dxvk/dxvk_adapter.cpp#L139
+            // VkFormatProperties3 properties3 = { VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_3 };
+            // VkFormatProperties2 properties2 = { VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_2, &properties3 };
+            // vk->vkGetPhysicalDeviceFormatProperties2(m_handle, format, &properties2);
+            VkBaseOutStructure* next = reinterpret_cast<VkBaseOutStructure*>(pFormatProperties->pNext);
+            while (next != nullptr) {
+                if (next->sType == VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_3) {
+                    auto* props3 = reinterpret_cast<VkFormatProperties3*>(next);
+                    props3->optimalTilingFeatures |= VK_FORMAT_FEATURE_2_SAMPLED_IMAGE_BIT |
+                                                    VK_FORMAT_FEATURE_2_BLIT_SRC_BIT |
+                                                    VK_FORMAT_FEATURE_2_SAMPLED_IMAGE_FILTER_LINEAR_BIT |
+                                                    VK_FORMAT_FEATURE_2_TRANSFER_DST_BIT;
+                    break;
+                }
+                next = next->pNext;
+            }
+            return;
+        }
+        default:
+            break;
+    }
 }
 
 void FinalizerThread(struct device* dev) {
@@ -1094,6 +1166,7 @@ BCnLayer_GetInstanceProcAddr(VkInstance instance,
 	GETPROCADDR(EnumeratePhysicalDevices)
 	GETPROCADDR(GetPhysicalDeviceFeatures);
 	GETPROCADDR(GetPhysicalDeviceFormatProperties);
+	GETPROCADDR(GetPhysicalDeviceFormatProperties2);
 	GETPROCADDR(GetPhysicalDeviceImageFormatProperties);
 	GETPROCADDR(GetPhysicalDeviceImageFormatProperties2);
 	GETPROCADDR(GetPhysicalDeviceFeatures2);
