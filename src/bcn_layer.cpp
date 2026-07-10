@@ -1089,6 +1089,7 @@ VK_LAYER_EXPORT PFN_vkVoidFunction VKAPI_CALL
 BCnLayer_GetInstanceProcAddr(VkInstance instance,
 							 const char *pName)
 {
+    GETPROCADDR(GetInstanceProcAddr);
 	GETPROCADDR(CreateInstance);
 	GETPROCADDR(EnumeratePhysicalDevices)
 	GETPROCADDR(GetPhysicalDeviceFeatures);
