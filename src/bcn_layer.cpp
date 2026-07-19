@@ -1119,6 +1119,7 @@ VK_LAYER_EXPORT PFN_vkVoidFunction VKAPI_CALL
 BCnLayer_GetDeviceProcAddr(VkDevice device,
 						   const char *pName)
 {
+    GETPROCADDR(GetDeviceProcAddr);
 	GETPROCADDR(CreateImage);
 	GETPROCADDR(CreateImageView);
 	GETPROCADDR(DestroyDevice);
