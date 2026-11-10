@@ -124,6 +124,105 @@ void StagingResources::WaitForCompletion() {
     has_completed = true;
 }
 
+static VkDeviceSize StagingClassSize(VkDeviceSize requestedBytes)
+{
+    constexpr VkDeviceSize kMinClassBytes = 4096;
+    if (requestedBytes <= kMinClassBytes)
+        return kMinClassBytes;
+    // Next power of two at or above requestedBytes.
+    return static_cast<VkDeviceSize>(1) << (64 - __builtin_clzll(static_cast<uint64_t>(requestedBytes) - 1));
+}
+
+void StagingResources::MarkStagingBufferAvailable(struct buffer *buf)
+{
+    if (buf && buf->stagingReuseState == StagingReuseState::Reserved) {
+        buf->stagingReuseState = StagingReuseState::Available;
+        buf->reuseBarrierCountAtRelease = reuseBarrierCount;
+    }
+}
+
+// Keep both shader and copy accesses covered, because a reused buffer can change roles,
+// and it's global so that one barrier covers every buffer released before it.
+static void RecordReuseBarrier(const struct command_buffer *cb)
+{
+    constexpr VkAccessFlags kReuseAccess =
+        VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT |
+        VK_ACCESS_TRANSFER_READ_BIT | VK_ACCESS_TRANSFER_WRITE_BIT;
+    constexpr VkPipelineStageFlags kReuseStages =
+        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT;
+
+    VkMemoryBarrier barrier = {
+        .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER,
+        .pNext = nullptr,
+        .srcAccessMask = kReuseAccess,
+        .dstAccessMask = kReuseAccess,
+    };
+
+    cb->device->table.CmdPipelineBarrier(cb->handle, kReuseStages, kReuseStages, 0, 1, &barrier, 0, nullptr, 0, nullptr);
+}
+
+struct buffer *StagingResources::CreateOrReuseStagingBuffer(struct command_buffer *cb, VkDeviceSize requestedBytes,
+                                                            VkFormat format, int width, int height)
+{
+    const bool reuseEnabled = cb->device->reuse_staging_buffers;
+    const VkDeviceSize allocationBytes = reuseEnabled ? StagingClassSize(requestedBytes) : requestedBytes;
+    struct buffer *buf = nullptr;
+
+    // Buffers needing no barrier first: covered ones from this batch, then pooled ones.
+    if (reuseEnabled) {
+        struct buffer *bufferNeedingBarrier = nullptr;
+        for (const auto& ownedBuffer : stagingBuffers) {
+            struct buffer *candidate = ownedBuffer.get();
+            if (!candidate || candidate->stagingReuseState != StagingReuseState::Available
+                    || candidate->size != allocationBytes)
+                continue;
+            if (candidate->reuseBarrierCountAtRelease < reuseBarrierCount) {
+                buf = candidate;
+                break;
+            }
+            if (!bufferNeedingBarrier)
+                bufferNeedingBarrier = candidate;
+        }
+
+        if (!buf && cb->device->stagingPool) {
+            auto pooledBuffer = cb->device->stagingPool->Acquire(allocationBytes);
+            if (pooledBuffer) {
+                buf = pooledBuffer.get();
+                AddStagingBuffer(std::move(pooledBuffer));
+            }
+        }
+
+        if (!buf && bufferNeedingBarrier) {
+            buf = bufferNeedingBarrier;
+            RecordReuseBarrier(cb);
+            reuseBarrierCount++;
+        }
+    }
+
+    if (!buf) {
+        auto newBuffer = create_staging_buffer(cb->device, allocationBytes, format, width, height);
+        if (!newBuffer && cb->device->stagingPool) {
+            // Idle pooled buffers may be what is using up the memory.
+            cb->device->stagingPool->Clear();
+            newBuffer = create_staging_buffer(cb->device, allocationBytes, format, width, height);
+        }
+        buf = newBuffer.get();
+        if (!buf)
+            return nullptr;
+        buf->returnToPool = reuseEnabled;
+        AddStagingBuffer(std::move(newBuffer));
+    }
+
+    if (reuseEnabled)
+        buf->stagingReuseState = StagingReuseState::Reserved;
+
+    buf->format = format;
+    buf->width = width;
+    buf->height = height;
+    buf->usedSize = staging_buffer_aligned_size(format, requestedBytes);
+    return buf;
+}
+
 ScopedTimestampQuery StagingResources::MakeScopedTimestampQuery(
     struct command_buffer* cb,
     const std::string& label,
@@ -414,8 +513,17 @@ void StagingResources::Cleanup() {
             dev->table.UnmapMemory(device, buf->memory);
         }
 
+        if (buf->returnToPool && dev->stagingPool) {
+            dev->stagingPool->Release(std::move(buf));
+            continue;
+        }
+
         dev->table.DestroyBuffer(device, buf->handle, buf->alloc);
         dev->table.FreeMemory(device, buf->memory, buf->alloc);
+    }
+
+    if (dev->profile_transfers && dev->stagingPool) {
+        dev->stagingPool->LogStats();
     }
 
     if (dev->debug_astc) {
