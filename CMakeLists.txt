@@ -231,6 +231,14 @@ target_include_directories(bcn_layer PRIVATE
     ${CMAKE_CURRENT_BINARY_DIR}/src
 )
 
+if(CMAKE_STRIP)
+    add_custom_command(
+        TARGET bcn_layer POST_BUILD
+        COMMAND ${CMAKE_STRIP} --strip-unneeded $<TARGET_FILE:bcn_layer>
+        COMMENT "Stripping unnecessary symbols from my_shared_lib"
+    )
+endif()
+
 install(TARGETS bcn_layer DESTINATION ${LIB_INSTALL_DIR})
 install(FILES "${CMAKE_CURRENT_BINARY_DIR}/libbcn_layer.json" DESTINATION ${JSON_INSTALL_DIR})
 install(FILES "${CMAKE_CURRENT_BINARY_DIR}/libbcn_layer32.json" DESTINATION ${JSON_INSTALL_DIR})
