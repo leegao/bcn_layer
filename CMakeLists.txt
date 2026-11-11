@@ -187,18 +187,23 @@ if(CMAKE_SIZEOF_VOID_P EQUAL 8
 
     # all_gpu_counters.cpp gets stuck on -O3, so let's compile it separately at -O0
     add_library(all_gpu_counters_obj OBJECT
-        "third_party/libGPUCounters/hwcpipe/src/hwcpipe/all_gpu_counters.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/third_party/libGPUCounters/hwcpipe/src/hwcpipe/detail/counter_map/5th_generation.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/third_party/libGPUCounters/hwcpipe/src/hwcpipe/detail/counter_map/bifrost.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/third_party/libGPUCounters/hwcpipe/src/hwcpipe/detail/counter_map/valhall.cpp"
     )
-    target_compile_options(all_gpu_counters_obj PRIVATE "-O0")
+    target_compile_options(all_gpu_counters_obj PRIVATE "-O2")
     target_include_directories(all_gpu_counters_obj PRIVATE
-        "third_party/libGPUCounters/hwcpipe/include"
-        "third_party/libGPUCounters/hwcpipe/src"
-        "third_party/libGPUCounters/backend/device/include"
+        "${CMAKE_CURRENT_SOURCE_DIR}/third_party/libGPUCounters/hwcpipe/include"
+        "${CMAKE_CURRENT_SOURCE_DIR}/third_party/libGPUCounters/hwcpipe/src"
+        "${CMAKE_CURRENT_SOURCE_DIR}/third_party/libGPUCounters/backend/device/include"
+        "${CMAKE_CURRENT_SOURCE_DIR}/third_party/libGPUCounters/backend/device/src"
     )
     set_target_properties(all_gpu_counters_obj PROPERTIES POSITION_INDEPENDENT_CODE ON)
     target_compile_definitions(all_gpu_counters_obj PRIVATE ANDROID)
     get_target_property(HWCP_SOURCES hwcpipe SOURCES)
-    list(REMOVE_ITEM HWCP_SOURCES "src/hwcpipe/all_gpu_counters.cpp")
+    list(REMOVE_ITEM HWCP_SOURCES "src/hwcpipe/detail/counter_map/5th_generation.cpp")
+    list(REMOVE_ITEM HWCP_SOURCES "src/hwcpipe/detail/counter_map/bifrost.cpp")
+    list(REMOVE_ITEM HWCP_SOURCES "src/hwcpipe/detail/counter_map/valhall.cpp")
     set_target_properties(hwcpipe PROPERTIES SOURCES "${HWCP_SOURCES}")
     target_sources(hwcpipe PRIVATE $<TARGET_OBJECTS:all_gpu_counters_obj>)
 
