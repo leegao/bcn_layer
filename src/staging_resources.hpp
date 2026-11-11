@@ -125,6 +125,9 @@ public:
     void AddStagingBuffer(std::unique_ptr<struct buffer> buf) { stagingBuffers.push_back(std::move(buf)); }
     void AddStagingImageView(VkImageView view) { stagingImageViews.push_back(view); }
     void AddDescriptorSet(VkDescriptorPool pool, VkDescriptorSet set) { descriptorSets.push_back({ pool, set }); }
+    void MarkStagingBufferAvailable(struct buffer *buf);  // Call after recording the last use, not after waiting for the GPU.
+    // Records the reuse barrier itself when one is needed; nullptr means allocation failed.
+    struct buffer *CreateOrReuseStagingBuffer(struct command_buffer *cb, VkDeviceSize requestedBytes, VkFormat format, int width, int height);
     int Size() const { return stagingBuffers.size(); }
     int MemoryUsage(VkFormat format = VK_FORMAT_UNDEFINED) const {
         int usage = 0;
@@ -155,6 +158,7 @@ private:
 
     bool freed = false;
     bool has_completed = false;
+    uint64_t reuseBarrierCount = 0;
     std::vector<std::unique_ptr<struct buffer>> stagingBuffers;
     std::vector<VkImageView> stagingImageViews;
     std::vector<std::pair<VkDescriptorPool, VkDescriptorSet>> descriptorSets;

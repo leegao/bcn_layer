@@ -367,10 +367,21 @@ void TranscodeAndCopyBufferToImage(
     if (use_image_view) {
         decompress_bcn_compute(dev, cb->handle, format, &copy_region, srcBuffer, nullptr, dstImg, dstImageLayout, add_watermark);
     } else {
-        int size = w * h * d * texel_size;
-        auto staging_buf = create_staging_buffer(dev, size, target_format, w, h);
+        VkDeviceSize outputBytes = (VkDeviceSize) w * h * d * texel_size;
+        struct buffer *staging_buf = cb->currentStagingResources->CreateOrReuseStagingBuffer(
+            cb, outputBytes, target_format, w, h);
+        if (!staging_buf) {
+            Logger::log("error", "Failed to get a %llu byte staging buffer, skipping conversion",
+                (unsigned long long) outputBytes);
+            return;
+        }
 
-        decompress_bcn_compute(dev, cb->handle, format, &copy_region, srcBuffer, staging_buf.get(), dstImg, dstImageLayout, add_watermark);
+        VkResult result = decompress_bcn_compute(dev, cb->handle, format, &copy_region, srcBuffer, staging_buf, dstImg, dstImageLayout, add_watermark);
+        if (result != VK_SUCCESS) {
+            Logger::log("error", "decompress_bcn_compute failed: %d, skipping copy", result);
+            cb->currentStagingResources->MarkStagingBufferAvailable(staging_buf);
+            return;
+        }
 
         VkBufferMemoryBarrier bufferBarrier = {
             .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
@@ -394,7 +405,7 @@ void TranscodeAndCopyBufferToImage(
 
         table.CmdCopyBufferToImage(cb->handle,
             staging_buf->handle, dstImg->handle, dstImageLayout, 1, &copy_region);
-        cb->currentStagingResources->AddStagingBuffer(std::move(staging_buf));
+        cb->currentStagingResources->MarkStagingBufferAvailable(staging_buf);
     }
 }
 
@@ -515,8 +526,14 @@ void TranscodeAndCopyBcnImageToImage(struct device* dev,
     };
 
     VkDeviceSize raw_bcn_buffer_size = BcnBufferSize(dstImg->format, fake_pixel_region);
-    auto staging_block_buf = create_staging_buffer(dev, raw_bcn_buffer_size, srcImg->format,
-                                                    image_region.extent.width, image_region.extent.height);
+    struct buffer *staging_block_buf = cb->currentStagingResources->CreateOrReuseStagingBuffer(
+        cb, raw_bcn_buffer_size, srcImg->format, image_region.extent.width, image_region.extent.height);
+    if (!staging_block_buf) {
+        Logger::log("error", "Failed to get a %llu byte staging buffer, skipping image copy",
+            (unsigned long long) raw_bcn_buffer_size);
+        return;
+    }
+
     VkBufferImageCopy copy_image_to_buffer_region = {
         .imageSubresource = image_region.srcSubresource,
         .imageOffset = image_region.srcOffset,
@@ -555,10 +572,10 @@ void TranscodeAndCopyBcnImageToImage(struct device* dev,
         }
     };
 
-    TranscodeAndCopyBufferToImage(dev, cb, staging_block_buf.get(),
+    TranscodeAndCopyBufferToImage(dev, cb, staging_block_buf,
                                   dstImg, dstImageLayout, transcode_region, false, dev->add_watermark);
 
-    cb->currentStagingResources->AddStagingBuffer(std::move(staging_block_buf));
+    cb->currentStagingResources->MarkStagingBufferAvailable(staging_block_buf);
 }
 
 VK_LAYER_EXPORT void VKAPI_CALL

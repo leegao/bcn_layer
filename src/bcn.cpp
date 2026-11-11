@@ -582,13 +582,13 @@ encode_etc2_compute(struct device *dev,
     VkDescriptorBufferInfo src_info = {
         .buffer = decodedBuffer->handle,
         .offset = 0,
-        .range = VK_WHOLE_SIZE,
+        .range = decodedBuffer->descriptorRange(),
     };
 
     VkDescriptorBufferInfo dst_info = {
         .buffer = stagingBuffer->handle,
         .offset = 0,
-        .range = VK_WHOLE_SIZE,
+        .range = stagingBuffer->descriptorRange(),
     };
 
     VkWriteDescriptorSet desc_writes[2];
@@ -697,13 +697,13 @@ encode_astc_compute(struct device *dev,
     VkDescriptorBufferInfo src_info = {
         .buffer = decodedBuffer->handle,
         .offset = 0,
-        .range = VK_WHOLE_SIZE
+        .range = decodedBuffer->descriptorRange()
     };
 
     VkDescriptorBufferInfo dst_info = {
         .buffer = stagingBuffer->handle,
         .offset = 0,
-        .range = VK_WHOLE_SIZE
+        .range = stagingBuffer->descriptorRange()
     };
 
     VkDescriptorBufferInfo lut2_info = {
@@ -920,13 +920,13 @@ add_debug_watermark(struct device *dev,
     VkDescriptorBufferInfo src_info = {
         .buffer = decodedBuffer->handle,
         .offset = 0,
-        .range = VK_WHOLE_SIZE
+        .range = decodedBuffer->descriptorRange()
     };
 
     VkDescriptorBufferInfo dst_info = {
         .buffer = stagingBuffer->handle,
         .offset = 0,
-        .range = VK_WHOLE_SIZE
+        .range = stagingBuffer->descriptorRange()
     };
 
     VkWriteDescriptorSet desc_writes[2];
@@ -1029,16 +1029,29 @@ VkResult decompress_bcn_compute(struct device *dev,
     // TODO: add support for rgba16_sfloat
     add_watermark = add_watermark && depth == 1 && get_format_for_bcn(format) != VK_FORMAT_R16G16B16A16_SFLOAT;
 
-    std::unique_ptr<struct buffer> decodedBuffer;
+    struct buffer *decodedBuffer = nullptr;
     if (use_etc2 || use_astc) {
         int texel_size = is_bc6(format) ? 8 : 4;
-        decodedBuffer = create_staging_buffer(dev, width * height * depth * texel_size, get_format_for_bcn(format), width, height);
+        VkDeviceSize decodedBytes = (VkDeviceSize) width * height * depth * texel_size;
+        decodedBuffer = cb->currentStagingResources->CreateOrReuseStagingBuffer(
+            cb, decodedBytes, get_format_for_bcn(format), width, height);
+        if (!decodedBuffer) {
+            Logger::log("error", "Failed to get a %llu byte decoded staging buffer", (unsigned long long) decodedBytes);
+            return VK_ERROR_OUT_OF_DEVICE_MEMORY;
+        }
     }
+
+    struct ReleaseOnExit {
+        StagingResources *resources;
+        struct buffer *buf;
+        ~ReleaseOnExit() { resources->MarkStagingBufferAvailable(buf); }
+    } releaseDecodedBuffer { cb->currentStagingResources.get(), decodedBuffer };
 
     std::unique_ptr<struct buffer> waterMarkedDecodedBuffer;
     if (add_watermark) {
         int texel_size = is_bc6(format) ? 8 : 4;
-        waterMarkedDecodedBuffer = create_staging_buffer(dev, width * height * depth * texel_size, get_format_for_bcn(format), width, height);
+        VkDeviceSize decodedBytes = (VkDeviceSize) width * height * depth * texel_size;
+        waterMarkedDecodedBuffer = create_staging_buffer(dev, decodedBytes, get_format_for_bcn(format), width, height);
     }
 
     struct push_constants constants = {
@@ -1067,7 +1080,7 @@ VkResult decompress_bcn_compute(struct device *dev,
     VkDescriptorBufferInfo src_info = {
         .buffer = srcBuffer->handle,
         .offset = static_cast<VkDeviceSize>(offset),
-        .range = VK_WHOLE_SIZE
+        .range = srcBuffer->descriptorRange(static_cast<VkDeviceSize>(offset))
     };
 
     // Scope this at the UpdateDescriptorSets level to avoid use-after-free
@@ -1077,14 +1090,14 @@ VkResult decompress_bcn_compute(struct device *dev,
     // [srcBuffer -> decodedBuffer] -> waterMarkedDecodedBuffer -> stagingBuffer if yes transcode and yes watermark
     auto targetBuffer = stagingBuffer;
     if (use_etc2 || use_astc) {
-        targetBuffer = decodedBuffer.get(); // unwatermarked buffer
+        targetBuffer = decodedBuffer; // unwatermarked buffer
     } else if (add_watermark) {
         targetBuffer = waterMarkedDecodedBuffer.get(); // watermarked buffer
     }
     VkDescriptorBufferInfo dst_info = {
         .buffer = use_image_view ? VK_NULL_HANDLE : targetBuffer->handle,
         .offset = 0,
-        .range = VK_WHOLE_SIZE
+        .range = use_image_view ? VK_WHOLE_SIZE : targetBuffer->descriptorRange()
     };
 
     desc_writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -1276,7 +1289,7 @@ VkResult decompress_bcn_compute(struct device *dev,
 
     // srcBuffer -> [decodedBuffer -> stagingBuffer] if yes transcode and no watermark
     // srcBuffer -> decodedBuffer -> [waterMarkedDecodedBuffer -> stagingBuffer] if yes transcode and yes watermark
-    auto sourceDecodedBuffer = add_watermark ? waterMarkedDecodedBuffer.get() : decodedBuffer.get();
+    auto sourceDecodedBuffer = add_watermark ? waterMarkedDecodedBuffer.get() : decodedBuffer;
     if (use_etc2) {
         VkResult result = encode_etc2_compute(dev, cb, format, copy_region, sourceDecodedBuffer, stagingBuffer);
         if (result != VK_SUCCESS) {
@@ -1289,10 +1302,6 @@ VkResult decompress_bcn_compute(struct device *dev,
             Logger::log("error", "encode_astc_compute failed: %d", result);
             return result;
         }
-    }
-
-    if (use_etc2 || use_astc) {
-        cb->currentStagingResources->AddStagingBuffer(std::move(decodedBuffer));
     }
 
     if (add_watermark) {

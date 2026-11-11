@@ -4,6 +4,7 @@
 #include "vulkan/vk_layer.h"
 
 #include <memory>
+#include <cstdlib>
 #include <unistd.h>
 #include <cmath>
 #include <utility>
@@ -19,6 +20,20 @@ std::unordered_map<void *, std::shared_ptr<struct device>> deviceMap;
 bool bcn_compute_auto = false;
 
 std::mutex global_lock;
+
+static bool StagingBufferReuseEnabled()
+{
+    static const bool enabled = [] {
+        const char *disableReuseEnv = getenv("BCN_DISABLE_BUFFER_REUSE");
+        bool reuseEnabled = !(disableReuseEnv && atoi(disableReuseEnv));
+        if (reuseEnabled)
+            Logger::log("info", "staging buffer reuse: enabled, conversions of the same size class share buffers, ordered by barriers");
+        else
+            Logger::log("info", "staging buffer reuse: disabled, every conversion allocates its own buffers");
+        return reuseEnabled;
+    }();
+    return enabled;
+}
 
 #define GETPROCADDR(func) \
 if (!strcmp(pName, "vk" #func)) \
@@ -546,12 +561,13 @@ BCnLayer_GetPhysicalDeviceFormatProperties2(VkPhysicalDevice physicalDevice,
 }
 
 void FinalizerThread(struct device* dev) {
+    constexpr auto kPoolTrimInterval = std::chrono::seconds(1);
     while (!dev->stop_thread) {
         {
             std::vector<std::unique_ptr<StagingResources>> queue;
             {
                 std::unique_lock<std::mutex> lock(global_lock);
-                dev->hasCleanupWork.wait(lock, [dev] {
+                dev->hasCleanupWork.wait_for(lock, kPoolTrimInterval, [dev] {
                     return dev->stop_thread || !dev->stagingResourcesQueue.empty();
                 });
 
@@ -564,15 +580,17 @@ void FinalizerThread(struct device* dev) {
                 }
             }
 
-            while (!queue.empty()) {
+            for (auto& stagingResources : queue) {
                 if (dev->stop_thread) return;
-                std::unique_ptr<StagingResources> stagingResources = std::move(queue.back());
-                queue.pop_back();
                 if (stagingResources) {
                     stagingResources->WaitForCompletion();
                     stagingResources->Cleanup();
                 }
             }
+        }
+
+        if (dev->stagingPool) {
+            dev->stagingPool->Trim();
         }
     }
 }
@@ -1025,10 +1043,28 @@ BCnLayer_CreateDevice(VkPhysicalDevice physicalDevice,
         device->use_image_view = getenv("BCN_COMPUTE_IMAGE_VIEW") ? atoi(getenv("BCN_COMPUTE_IMAGE_VIEW")) : 1;
     }
 
-    if (const char* dump_buffers_path = std::getenv("BCN_DUMP_BUFFERS_PATH")) {
-        device->dump_buffers_path = dump_buffers_path;
-    } else {
-        device->dump_buffers_path = "";
+    device->dump_buffers_path = getenv("BCN_DUMP_BUFFERS_PATH") ? getenv("BCN_DUMP_BUFFERS_PATH") : "";
+    const bool dump_buffers = !device->dump_buffers_path.empty();
+
+    device->reuse_staging_buffers = StagingBufferReuseEnabled();
+    // BCN_SAMPLE_GPU_COUNTERS runs the conversion shaders in one-shot command buffers,
+    // which a reuse barrier in the application's command buffer can't order.
+    if (device->reuse_staging_buffers && (dump_buffers || debug_astc || add_watermark || sample_gpu_counters)) {
+        const char *why = dump_buffers ? "BCN_DUMP_BUFFERS_PATH"
+            : debug_astc ? "BCN_DEBUG_ASTC_DIAGNOSTICS"
+            : add_watermark ? "BCN_ADD_WATERMARK"
+            : "BCN_SAMPLE_GPU_COUNTERS";
+        Logger::log("info", "staging buffer reuse: disabled because %s is on", why);
+        device->reuse_staging_buffers = 0;
+    }
+
+    if (device->reuse_staging_buffers) {
+        constexpr long long kPoolMaxIdleMiB = 128;
+        constexpr long long kPoolIdleMs = 5000;
+        device->stagingPool = std::make_unique<StagingBufferPool>(
+            device.get(), static_cast<VkDeviceSize>(kPoolMaxIdleMiB) << 20, std::chrono::milliseconds(kPoolIdleMs));
+        Logger::log("info", "staging buffer pool: keeping up to %lld MiB of idle buffers for %lld ms",
+            kPoolMaxIdleMiB, kPoolIdleMs);
     }
 
     auto now = std::chrono::system_clock::now();
@@ -1106,6 +1142,9 @@ BCnLayer_DestroyDevice(VkDevice device,
 		stagingResources->Cleanup();
 	}
 	dev->stagingResourcesQueue.clear();
+	if (dev->stagingPool) {
+		dev->stagingPool->Clear();
+	}
 	dev->syncPool.reset();
 	dev->descriptorSetAllocator->cleanup();
 	dev->descriptorSetAllocator.reset();
