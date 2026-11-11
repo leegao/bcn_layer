@@ -8,6 +8,7 @@
     "implementation_version": "1",
     "description": "BCn Decompression Layer",
     "functions": {
+      "vkNegotiateLoaderLayerInterfaceVersion": "BCnLayer_NegotiateLoaderLayerInterfaceVersion",
       "vkGetInstanceProcAddr": "BCnLayer_GetInstanceProcAddr",
       "vkGetDeviceProcAddr": "BCnLayer_GetDeviceProcAddr"
     },

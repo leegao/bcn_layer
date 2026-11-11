@@ -20,6 +20,8 @@ bool bcn_compute_auto = false;
 
 std::mutex global_lock;
 
+static PFN_vkGetInstanceProcAddr g_bcn_next_gipa = nullptr;
+
 #define GETPROCADDR(func) \
 if (!strcmp(pName, "vk" #func)) \
 	return (PFN_vkVoidFunction)&BCnLayer_##func;
@@ -151,8 +153,8 @@ BCnLayer_CreateInstance(const VkInstanceCreateInfo *pCreateInfo,
 	VkLayerInstanceCreateInfo *layerCreateInfo = (VkLayerInstanceCreateInfo *)pCreateInfo->pNext;
 	VkResult result;
 
-    while (layerCreateInfo && (layerCreateInfo->sType != VK_STRUCTURE_TYPE_LOADER_INSTANCE_CREATE_INFO |
-    						   layerCreateInfo->function != VK_LAYER_LINK_INFO))
+    while (layerCreateInfo && (layerCreateInfo->sType != VK_STRUCTURE_TYPE_LOADER_INSTANCE_CREATE_INFO ||
+                               layerCreateInfo->function != VK_LAYER_LINK_INFO))
     {
     	layerCreateInfo = (VkLayerInstanceCreateInfo *)layerCreateInfo->pNext;
     }
@@ -162,6 +164,7 @@ BCnLayer_CreateInstance(const VkInstanceCreateInfo *pCreateInfo,
 
 
     PFN_vkGetInstanceProcAddr gip = layerCreateInfo->u.pLayerInfo->pfnNextGetInstanceProcAddr;
+    g_bcn_next_gipa = layerCreateInfo->u.pLayerInfo->pfnNextGetInstanceProcAddr;
 	layerCreateInfo->u.pLayerInfo = layerCreateInfo->u.pLayerInfo->pNext;
 
     PFN_vkCreateInstance createInstance = (PFN_vkCreateInstance)gip(VK_NULL_HANDLE, "vkCreateInstance");
@@ -227,6 +230,7 @@ BCnLayer_EnumeratePhysicalDevices(VkInstance instance,
 		return result;
 
 	for (uint32_t index = 0; index < *pPhysicalDeviceCount; index++) {
+		instanceMap[GetKey(pPhysicalDevices[index])] = instance;
 		VkPhysicalDeviceFeatures features{};
 		instanceDispatch[GetKey(instance)].GetPhysicalDeviceFeatures(pPhysicalDevices[index], &features);
 
@@ -1160,6 +1164,29 @@ BCnLayer_GetDeviceProcAddr(VkDevice device,
 
 VK_LAYER_EXPORT PFN_vkVoidFunction VKAPI_CALL
 BCnLayer_GetInstanceProcAddr(VkInstance instance,
+							 const char *pName);
+
+VK_LAYER_EXPORT PFN_vkVoidFunction VKAPI_CALL
+BCnLayer_GetDeviceProcAddr(VkDevice device,
+						   const char *pName);
+
+VK_LAYER_EXPORT VkResult VKAPI_CALL
+BCnLayer_NegotiateLoaderLayerInterfaceVersion(VkNegotiateLayerInterface *pVersionStruct) {
+    if (!pVersionStruct || pVersionStruct->sType != LAYER_NEGOTIATE_INTERFACE_STRUCT)
+        return VK_ERROR_INITIALIZATION_FAILED;
+
+    if (pVersionStruct->loaderLayerInterfaceVersion >= 2) {
+        pVersionStruct->loaderLayerInterfaceVersion = 2;
+    }
+
+    pVersionStruct->pfnGetInstanceProcAddr = &BCnLayer_GetInstanceProcAddr;
+    pVersionStruct->pfnGetDeviceProcAddr = &BCnLayer_GetDeviceProcAddr;
+    pVersionStruct->pfnGetPhysicalDeviceProcAddr = nullptr;
+    return VK_SUCCESS;
+}
+
+VK_LAYER_EXPORT PFN_vkVoidFunction VKAPI_CALL
+BCnLayer_GetInstanceProcAddr(VkInstance instance,
 							 const char *pName)
 {
     GETPROCADDR(GetInstanceProcAddr);
@@ -1174,9 +1201,17 @@ BCnLayer_GetInstanceProcAddr(VkInstance instance,
 	GETPROCADDR(DestroyInstance);
 	GETPROCADDR(CreateDevice);
 
-	{
-		scoped_lock l(global_lock);
-		VkLayerInstanceDispatchTable table = instanceDispatch[GetKey(instance)];
-		return table.GetInstanceProcAddr(instance, pName);
-	}
+    if (!instance) {
+        if (g_bcn_next_gipa) return g_bcn_next_gipa(VK_NULL_HANDLE, pName);
+        return nullptr;
+    }
+    {
+        scoped_lock l(global_lock);
+        auto it = instanceDispatch.find(GetKey(instance));
+        if (it != instanceDispatch.end()) {
+            return it->second.GetInstanceProcAddr(instance, pName);
+        }
+        if (g_bcn_next_gipa) return g_bcn_next_gipa(instance, pName);
+        return nullptr;
+    }
 }
